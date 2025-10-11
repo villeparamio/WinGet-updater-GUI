@@ -1,0 +1,12 @@
+# UTF-8
+# PyInstaller version file
+# https://pyinstaller.org/en/stable/usage.html#capturing-version-info
+
+[Version]
+FileVersion=1.0.0.0
+ProductVersion=1.0.0
+CompanyName=Villeparamio
+FileDescription=Winget Updater GUI
+InternalName=winget_updater
+OriginalFilename=winget_updater.exe
+ProductName=Winget Updater

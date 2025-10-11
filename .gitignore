@@ -1,0 +1,19 @@
+# PyInstaller
+/build/
+/dist/
+*.spec
+*.exe
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+.venv/
+venv/
+*.log
+
+# Windows
+Thumbs.db
+Desktop.ini
