@@ -4,6 +4,13 @@ Interfaz gráfica en **Tkinter** para actualizar programas usando `winget`.
 
 ![screenshot](screenshot.png)
 
+## 📦 Descargar
+
+👉 [Última versión estable (Releases)](https://github.com/villeparamio/WinGet-updater-GUI/releases/latest)
+
+**Ejecutable recomendado:** `winget_updater.exe`
+
+
 ## 🚀 Características
 
 - Lista automáticamente los programas con actualizaciones disponibles.
@@ -31,4 +38,4 @@ pyinstaller --clean --onefile --noconsole --uac-admin ^
   --version-file version.txt ^
   --add-data "winget_updater.ico;." ^
   --add-data "winget_updater.png;." ^
-  winget_updater_tk.py
+  winget_updater.py
