@@ -1,12 +1,31 @@
-# UTF-8
-# PyInstaller version file
-# https://pyinstaller.org/en/stable/usage.html#capturing-version-info
-
-[Version]
-FileVersion=1.0.0.0
-ProductVersion=1.0.0
-CompanyName=Villeparamio
-FileDescription=Winget Updater GUI
-InternalName=winget_updater
-OriginalFilename=winget_updater.exe
-ProductName=Winget Updater
+VSVersionInfo(
+  ffi=FixedFileInfo(
+    filevers=(1, 1, 0, 0),
+    prodvers=(1, 1, 0, 0),
+    mask=0x3f,
+    flags=0x0,
+    OS=0x40004,
+    fileType=0x1,
+    subtype=0x0,
+    date=(0, 0)
+  ),
+  kids=[
+    StringFileInfo(
+      [
+        StringTable(
+          '040904B0',
+          [
+            StringStruct('CompanyName', 'Villeparamio'),
+            StringStruct('FileDescription', 'Winget Updater GUI'),
+            StringStruct('FileVersion', '1.1.0.0'),
+            StringStruct('InternalName', 'winget_updater'),
+            StringStruct('OriginalFilename', 'winget_updater.exe'),
+            StringStruct('ProductName', 'Winget Updater GUI'),
+            StringStruct('ProductVersion', '1.1.0.0')
+          ]
+        )
+      ]
+    ),
+    VarFileInfo([VarStruct('Translation', [1033, 1200])])
+  ]
+)

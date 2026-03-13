@@ -440,51 +440,6 @@ def parse_winget_output():
 # Precheck
 # =========================
 
-def precheck_upgrade(pkg):
-    cmd = [
-        "winget",
-        "upgrade",
-        "--id", pkg["Id"],
-        "--disable-interactivity",
-        "--accept-source-agreements"
-    ]
-
-    if pkg_has_unknown_version(pkg):
-        cmd.append("--include-unknown")
-
-    out = run(cmd) or ""
-    low = out.lower()
-
-    if (
-        "no se ha encontrado ninguna actualización disponible" in low or
-        "no hay versiones más recientes del paquete disponibles" in low or
-        "no available upgrade found" in low
-    ):
-        return False, "no_longer_pending", out
-
-    if (
-        "no applicable upgrade found" in low or
-        "no se ha encontrado ninguna actualización aplicable" in low or
-        "does not apply to your system or requirements" in low or
-        "no se aplica a su sistema o requisitos" in low or
-        "la configuración del sistema actual no admite la instalación de este paquete" in low or
-        "the current system configuration is not supported by this package" in low
-    ):
-        return False, "not_applicable", out
-
-    if (
-        "no package found matching input criteria" in low or
-        "no installed package found matching input criteria" in low or
-        "no se encontró ningún paquete que coincida con los criterios de entrada" in low
-    ):
-        return False, "not_found", out
-
-    return True, "upgradable", out
-
-def pkg_has_unknown_version(pkg):
-    v = (pkg.get("Version") or "").strip().lower()
-    return v in ("unknown", "desconocida", "")
-
 def perform_upgrade_attempt(pkg, text_widget, cancel_flag, set_current_process, use_exact=True):
     def ui_print(msg):
         text_widget.after(0, lambda: (
@@ -508,6 +463,17 @@ def perform_upgrade_attempt(pkg, text_widget, cancel_flag, set_current_process, 
                 text_widget.insert(tk.END, msg if msg.endswith("\n") else msg + "\n")
                 text_widget.see(tk.END)
         text_widget.after(0, _do)
+
+    def is_boring_status_line(line: str) -> bool:
+        boring_patterns = [
+            r"No se ha encontrado ninguna actualización disponible",
+            r"No hay versiones más recientes del paquete disponibles",
+            r"No available upgrade found",
+            r"No package found matching input criteria",
+            r"No installed package found matching input criteria",
+            r"No se encontró ningún paquete que coincida con los criterios de entrada",
+        ]
+        return matches_any(line, boring_patterns)
 
     cmd = ["winget", "upgrade", "--id", pkg["Id"]]
 
@@ -555,6 +521,7 @@ def perform_upgrade_attempt(pkg, text_widget, cancel_flag, set_current_process, 
 
         if not line:
             continue
+
         if RE_SPINNER.match(line):
             continue
 
@@ -570,8 +537,13 @@ def perform_upgrade_attempt(pkg, text_widget, cancel_flag, set_current_process, 
         if mlog:
             log_path = mlog.group(1).strip()
 
-        if not re.search(r"(licencia|license|microsoft no es responsable)", line, re.I):
-            ui_print(line)
+        if re.search(r"(licencia|license|microsoft no es responsable)", line, re.I):
+            continue
+
+        if is_boring_status_line(line):
+            continue
+
+        ui_print(line)
 
     if cancelled:
         return {
@@ -596,9 +568,57 @@ def perform_upgrade_attempt(pkg, text_widget, cancel_flag, set_current_process, 
         "raw_output": full_output,
     }
 
+
 # =========================
 # Actualización
 # =========================
+
+def pkg_has_unknown_version(pkg):
+    v = (pkg.get("Version") or "").strip().lower()
+    return v in ("unknown", "desconocida", "")
+
+
+def precheck_upgrade(pkg):
+    cmd = [
+        "winget",
+        "upgrade",
+        "--id", pkg["Id"],
+        "--disable-interactivity",
+        "--accept-source-agreements"
+    ]
+
+    if pkg_has_unknown_version(pkg):
+        cmd.append("--include-unknown")
+
+    out = run(cmd) or ""
+    low = out.lower()
+
+    if (
+        "no se ha encontrado ninguna actualización disponible" in low or
+        "no hay versiones más recientes del paquete disponibles" in low or
+        "no available upgrade found" in low
+    ):
+        return False, "no_longer_pending", out
+
+    if (
+        "no applicable upgrade found" in low or
+        "no se ha encontrado ninguna actualización aplicable" in low or
+        "does not apply to your system or requirements" in low or
+        "no se aplica a su sistema o requisitos" in low or
+        "la configuración del sistema actual no admite la instalación de este paquete" in low or
+        "the current system configuration is not supported by this package" in low
+    ):
+        return False, "not_applicable", out
+
+    if (
+        "no package found matching input criteria" in low or
+        "no installed package found matching input criteria" in low or
+        "no se encontró ningún paquete que coincida con los criterios de entrada" in low
+    ):
+        return False, "not_found", out
+
+    return True, "upgradable", out
+
 
 def update_packages(selected, text_widget, progress, on_pkg_done, on_all_done, cancel_flag, set_current_process, root):
     total = len(selected)
@@ -674,7 +694,15 @@ def update_packages(selected, text_widget, progress, on_pkg_done, on_all_done, c
         # Primer intento
         result = perform_upgrade_attempt(pkg, text_widget, cancel_flag, set_current_process, use_exact=True)
 
-        if result["status"] in ("not_applicable", "not_found") and should_retry_without_exact(result):
+        if result["status"] == "updated":
+            ui_print("✅ Actualizado correctamente.")
+        elif result["status"] == "updated_restart_required":
+            ui_print("✅ Actualizado correctamente. Es necesario reiniciar la aplicación.")
+        elif result["status"] == "no_longer_pending":
+            ui_print("↪ Resuelto: winget ya no lo considera pendiente de actualización.")
+
+
+        if result["status"] in ("not_applicable", "not_found", "no_longer_pending") and should_retry_without_exact(result):
             ui_print("↻ Reintentando sin --exact por posible problema de coincidencia estricta...")
             retry_no_exact = perform_upgrade_attempt(
                 pkg, text_widget, cancel_flag, set_current_process, use_exact=False
