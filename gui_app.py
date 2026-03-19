@@ -22,6 +22,64 @@ from winget_core import (
 APP_VERSION = "v1.2"
 
 
+THEMES = {
+    "light": {
+        "BG_APP": "#e9eef6",
+        "BG_SURFACE": "#ffffff",
+        "BG_SURFACE_ALT": "#f8fbff",
+        "BG_ACCENT": "#dbeafe",
+        "BORDER": "#b9c6d8",
+        "TEXT_MAIN": "#0f172a",
+        "TEXT_MUTED": "#334155",
+        "TEXT_SOFT": "#64748b",
+        "PRIMARY": "#1d4ed8",
+        "PRIMARY_HI": "#2563eb",
+        "PRIMARY_DISABLED": "#93c5fd",
+        "SUCCESS": "#166534",
+        "WARNING": "#a16207",
+        "ERROR": "#b91c1c",
+        "PILL_BG": "#dbeafe",
+        "PILL_TEXT": "#1e3a8a",
+        "PILL_WARN_BG": "#ffedd5",
+        "PILL_WARN_TEXT": "#9a3412",
+        "LOG_BG": "#f3f7fc",
+        "LOG_FG": "#0f172a",
+        "ENTRY_BG": "#ffffff",
+        "ENTRY_FG": "#0f172a",
+        "ENTRY_BORDER": "#94a3b8",
+        "CANVAS_BG": "#ffffff",
+        "PROGRESS_TROUGH": "#cbd5e1",
+    },
+    "dark": {
+        "BG_APP": "#002b36",
+        "BG_SURFACE": "#073642",
+        "BG_SURFACE_ALT": "#0a3a46",
+        "BG_ACCENT": "#0b3c49",
+        "BORDER": "#586e75",
+        "TEXT_MAIN": "#eee8d5",
+        "TEXT_MUTED": "#93a1a1",
+        "TEXT_SOFT": "#839496",
+        "PRIMARY": "#268bd2",
+        "PRIMARY_HI": "#2aa198",
+        "PRIMARY_DISABLED": "#3c6f73",
+        "SUCCESS": "#859900",
+        "WARNING": "#b58900",
+        "ERROR": "#dc322f",
+        "PILL_BG": "#09414f",
+        "PILL_TEXT": "#93a1a1",
+        "PILL_WARN_BG": "#6b5200",
+        "PILL_WARN_TEXT": "#fdf6e3",
+        "LOG_BG": "#00212b",
+        "LOG_FG": "#eee8d5",
+        "ENTRY_BG": "#001f27",
+        "ENTRY_FG": "#eee8d5",
+        "ENTRY_BORDER": "#586e75",
+        "CANVAS_BG": "#073642",
+        "PROGRESS_TROUGH": "#204851",
+    },
+}
+
+
 def is_admin():
     try:
         return ctypes.windll.shell32.IsUserAnAdmin()
@@ -125,6 +183,7 @@ def try_install_winget(text_widget=None):
 
 def build_gui():
     root = tk.Tk()
+    theme_var = tk.StringVar(value="dark")
 
     style = ttk.Style()
     try:
@@ -136,9 +195,47 @@ def build_gui():
             pass
 
     root.option_add("*Font", ("Segoe UI", 10))
-    style.configure("TButton", padding=6)
-    style.configure("TLabel", padding=2)
-    style.configure("TCheckbutton", padding=2)
+    root.option_add("*TCombobox*Listbox.font", ("Segoe UI", 10))
+
+    palette = THEMES[theme_var.get()]
+
+    def c(name):
+        return palette[name]
+
+    def apply_theme():
+        nonlocal palette
+        palette = THEMES[theme_var.get()]
+        root.configure(bg=c("BG_APP"))
+        style.configure("TFrame", background=c("BG_APP"))
+        style.configure("Surface.TFrame", background=c("BG_SURFACE"))
+        style.configure("Header.TFrame", background=c("BG_APP"))
+        style.configure("Card.TFrame", background=c("BG_SURFACE"))
+        style.configure("Stats.TFrame", background=c("BG_ACCENT"))
+        style.configure("TLabel", background=c("BG_APP"), foreground=c("TEXT_MAIN"), padding=0)
+        style.configure("Surface.TLabel", background=c("BG_SURFACE"), foreground=c("TEXT_MAIN"))
+        style.configure("Muted.TLabel", background=c("BG_APP"), foreground=c("TEXT_MUTED"))
+        style.configure("SmallMuted.TLabel", background=c("BG_SURFACE"), foreground=c("TEXT_SOFT"))
+        style.configure("CardTitle.TLabel", background=c("BG_SURFACE"), foreground=c("TEXT_MAIN"), font=("Segoe UI Semibold", 10))
+        style.configure("AppTitle.TLabel", background=c("BG_APP"), foreground=c("TEXT_MAIN"), font=("Segoe UI Semibold", 18))
+        style.configure("Hero.TLabel", background=c("BG_APP"), foreground=c("TEXT_MAIN"), font=("Segoe UI Semibold", 22))
+        style.configure("HeroSub.TLabel", background=c("BG_APP"), foreground=c("TEXT_MUTED"), font=("Segoe UI", 10))
+        style.configure("StatValue.TLabel", background=c("BG_ACCENT"), foreground=c("TEXT_MAIN"), font=("Segoe UI Semibold", 18))
+        style.configure("StatLabel.TLabel", background=c("BG_ACCENT"), foreground=c("TEXT_MUTED"), font=("Segoe UI", 9))
+        style.configure("Primary.TButton", padding=(14, 10), font=("Segoe UI Semibold", 10))
+        style.configure("TButton", padding=(10, 8))
+        try:
+            style.configure("TEntry", fieldbackground=c("ENTRY_BG"), foreground=c("ENTRY_FG"))
+        except Exception:
+            pass
+        try:
+            style.configure("TCombobox", fieldbackground=c("ENTRY_BG"), foreground=c("ENTRY_FG"), arrowsize=14)
+        except Exception:
+            pass
+        style.map("Primary.TButton", foreground=[("!disabled", "white")], background=[("!disabled", c("PRIMARY_HI")), ("disabled", c("PRIMARY_DISABLED"))])
+        try:
+            style.configure("Modern.Horizontal.TProgressbar", troughcolor=c("PROGRESS_TROUGH"), bordercolor=c("PROGRESS_TROUGH"), background=c("PRIMARY_HI"), lightcolor=c("PRIMARY_HI"), darkcolor=c("PRIMARY_HI"))
+        except Exception:
+            style.configure("Modern.Horizontal.TProgressbar", background=c("PRIMARY_HI"))
 
     def resource_path(relpath):
         base = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
@@ -154,34 +251,154 @@ def build_gui():
         except Exception:
             pass
 
+    apply_theme()
+
     root.title(f"Winget Updater {APP_VERSION} (by Villeparamio)")
-    root.geometry("1100x760")
-    root.minsize(900, 600)
+    root.geometry("1220x860")
+    root.minsize(980, 680)
 
-    frame_top = ttk.Frame(root)
-    frame_top.pack(fill=tk.X, pady=6, padx=8)
+    pkgs = []
+    checks = []
+    current_process = None
+    cancel_flag = tk.BooleanVar(value=False)
+    search_var = tk.StringVar()
+    filter_var = tk.StringVar(value="all")
+    show_log_var = tk.BooleanVar(value=False)
+    status_var = tk.StringVar(value="Inicializando...")
+    stats_total_var = tk.StringVar(value="0")
+    stats_selected_var = tk.StringVar(value="0")
+    stats_special_var = tk.StringVar(value="0")
+    headline_var = tk.StringVar(value="Cargando lista de programas...")
+    subtitle_var = tk.StringVar(value="Comprobando winget y preparando la interfaz")
+    current_results = {"last": None}
 
-    btn_all = ttk.Button(frame_top, text="Seleccionar todo", width=18)
-    btn_none = ttk.Button(frame_top, text="Seleccionar nada", width=18)
-    btn_refresh = ttk.Button(frame_top, text="Refrescar", width=12)
-    btn_update = ttk.Button(frame_top, text="Actualizar seleccionados", width=24)
-    btn_save = ttk.Button(frame_top, text="Guardar log", width=14)
+    def set_current_process(proc):
+        nonlocal current_process
+        current_process = proc
 
-    for b in (btn_all, btn_none, btn_refresh, btn_update, btn_save):
-        b.pack(side=tk.LEFT, padx=4)
+    def append_log(msg):
+        text_log.insert(tk.END, msg if msg.endswith("\n") else msg + "\n")
+        text_log.see(tk.END)
 
-    btn_cancel = ttk.Button(frame_top, text="Cancelar actualización", state="disabled", width=20)
-    btn_cancel.pack(side=tk.RIGHT, padx=4)
+    def log_ui(msg):
+        text_log.after(0, lambda: append_log(msg))
 
-    lbl_hint = ttk.Label(root, text="Cargando lista de programas...")
-    lbl_hint.pack(fill=tk.X, padx=12, pady=(6, 0), anchor="w")
+    def set_status(msg):
+        status_var.set(msg)
 
-    frame_list = ttk.Frame(root)
-    frame_list.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+    def set_status_async(msg):
+        root.after(0, lambda: set_status(msg))
 
-    canvas = tk.Canvas(frame_list, highlightthickness=0, bd=0)
-    vbar = ttk.Scrollbar(frame_list, orient="vertical", command=canvas.yview)
-    scroll = ttk.Frame(canvas)
+    def sync_log_visibility():
+        if show_log_var.get():
+            if not frame_log.winfo_manager():
+                frame_log.pack(fill=tk.BOTH, expand=False, padx=18, pady=(0, 14))
+                btn_toggle_log.config(text="Ocultar log")
+        else:
+            if frame_log.winfo_manager():
+                frame_log.pack_forget()
+                btn_toggle_log.config(text="Mostrar log")
+
+    def toggle_log():
+        show_log_var.set(not show_log_var.get())
+        sync_log_visibility()
+
+    outer = ttk.Frame(root, style="Header.TFrame")
+    outer.pack(fill=tk.BOTH, expand=True)
+
+    header = ttk.Frame(outer, style="Header.TFrame")
+    header.pack(fill=tk.X, padx=18, pady=(18, 12))
+
+    header_left = ttk.Frame(header, style="Header.TFrame")
+    header_left.pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+    ttk.Label(header_left, text="WinGet Updater", style="Hero.TLabel").pack(anchor="w")
+    ttk.Label(header_left, textvariable=subtitle_var, style="HeroSub.TLabel").pack(anchor="w", pady=(4, 0))
+
+    header_actions = ttk.Frame(header, style="Header.TFrame")
+    header_actions.pack(side=tk.RIGHT, anchor="ne")
+
+    btn_refresh = ttk.Button(header_actions, text="Refrescar", width=12)
+    btn_refresh.grid(row=0, column=0, padx=(0, 8))
+    btn_save = ttk.Button(header_actions, text="Guardar log", width=14)
+    btn_save.grid(row=0, column=1, padx=(0, 8))
+    btn_toggle_log = ttk.Button(header_actions, text="Mostrar log", width=14, command=toggle_log)
+    btn_toggle_log.grid(row=0, column=2, padx=(0, 8))
+    btn_theme = ttk.Button(header_actions, text="Tema: oscuro", width=14)
+    btn_theme.grid(row=0, column=3, padx=(0, 8))
+    btn_update = tk.Button(
+        header_actions,
+        text="Actualizar seleccionados",
+        width=24,
+        bg=c("PRIMARY_HI"),
+        fg=c("BG_APP") if theme_var.get() == "light" else c("BG_APP"),
+        activebackground=c("PRIMARY"),
+        activeforeground=c("TEXT_MAIN"),
+        relief="flat",
+        bd=0,
+        padx=14,
+        pady=10,
+        font=("Segoe UI Semibold", 10),
+        highlightthickness=0,
+    )
+    btn_update.grid(row=0, column=4)
+
+    stats_row = ttk.Frame(outer, style="Header.TFrame")
+    stats_row.pack(fill=tk.X, padx=18, pady=(0, 12))
+
+    def make_stat(parent, value_var, label_text):
+        frame = ttk.Frame(parent, style="Stats.TFrame", padding=(16, 12))
+        frame.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 10))
+        ttk.Label(frame, textvariable=value_var, style="StatValue.TLabel").pack(anchor="w")
+        ttk.Label(frame, text=label_text, style="StatLabel.TLabel").pack(anchor="w", pady=(2, 0))
+        return frame
+
+    make_stat(stats_row, stats_total_var, "Disponibles")
+    make_stat(stats_row, stats_selected_var, "Seleccionados")
+    make_stat(stats_row, stats_special_var, "Especiales / manuales")
+
+    toolbar = ttk.Frame(outer, style="Header.TFrame")
+    toolbar.pack(fill=tk.X, padx=18, pady=(0, 10))
+
+    search_wrap = ttk.Frame(toolbar, style="Surface.TFrame", padding=(12, 10))
+    search_wrap.pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+    ttk.Label(search_wrap, text="Buscar", style="Surface.TLabel").pack(side=tk.LEFT)
+    entry_search = ttk.Entry(search_wrap, textvariable=search_var, width=38)
+    entry_search.pack(side=tk.LEFT, padx=(10, 12))
+
+    ttk.Label(search_wrap, text="Vista", style="Surface.TLabel").pack(side=tk.LEFT)
+    combo_filter = ttk.Combobox(
+        search_wrap,
+        textvariable=filter_var,
+        state="readonly",
+        width=24,
+        values=[
+            "all",
+            "selected",
+            "explicit",
+            "unknown",
+        ],
+    )
+    combo_filter.pack(side=tk.LEFT, padx=(10, 12))
+    combo_filter.set("all")
+
+    btn_all = ttk.Button(search_wrap, text="Seleccionar todo", width=16)
+    btn_all.pack(side=tk.LEFT, padx=(6, 8))
+    btn_none = ttk.Button(search_wrap, text="Seleccionar nada", width=16)
+    btn_none.pack(side=tk.LEFT)
+
+    subtitle_panel = ttk.Frame(outer, style="Header.TFrame")
+    subtitle_panel.pack(fill=tk.X, padx=18, pady=(0, 8))
+    ttk.Label(subtitle_panel, textvariable=headline_var, style="AppTitle.TLabel").pack(anchor="w")
+    ttk.Label(subtitle_panel, textvariable=status_var, style="Muted.TLabel").pack(anchor="w", pady=(3, 0))
+
+    list_container = ttk.Frame(outer, style="Surface.TFrame", padding=(0, 0, 0, 0))
+    list_container.pack(fill=tk.BOTH, expand=True, padx=18, pady=(0, 12))
+
+    canvas = tk.Canvas(list_container, highlightthickness=0, bd=0, bg=c("CANVAS_BG"))
+    vbar = ttk.Scrollbar(list_container, orient="vertical", command=canvas.yview)
+    scroll = ttk.Frame(canvas, style="Surface.TFrame")
     scroll_window = canvas.create_window((0, 0), window=scroll, anchor="nw")
 
     def _update_scrollregion(_event=None):
@@ -221,63 +438,212 @@ def build_gui():
     canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
     vbar.pack(side=tk.RIGHT, fill=tk.Y)
 
-    lbl_count = ttk.Label(root, text="")
-    lbl_count.pack(fill=tk.X, padx=12, pady=(0, 0), anchor="w")
+    footer = ttk.Frame(outer, style="Header.TFrame")
+    footer.pack(fill=tk.X, padx=18, pady=(0, 12))
 
-    text_log = scrolledtext.ScrolledText(root, height=14, wrap=tk.WORD)
-    text_log.pack(fill=tk.BOTH, expand=False, padx=10, pady=5)
+    footer_left = ttk.Frame(footer, style="Header.TFrame")
+    footer_left.pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+    progress = ttk.Progressbar(footer_left, mode="determinate", maximum=100, style="Modern.Horizontal.TProgressbar")
+    progress.pack(fill=tk.X)
+    ttk.Label(footer_left, textvariable=status_var, style="Muted.TLabel").pack(anchor="w", pady=(6, 0))
+
+    footer_right = ttk.Frame(footer, style="Header.TFrame")
+    footer_right.pack(side=tk.RIGHT)
+    btn_cancel = ttk.Button(footer_right, text="Cancelar actualización", state="disabled", width=20)
+    btn_cancel.pack(side=tk.RIGHT)
+
+    frame_log = ttk.Frame(outer, style="Surface.TFrame", padding=(12, 12))
+    ttk.Label(frame_log, text="Log de ejecución", style="CardTitle.TLabel").pack(anchor="w", pady=(0, 8))
+    text_log = scrolledtext.ScrolledText(
+        frame_log,
+        height=12,
+        wrap=tk.WORD,
+        relief="flat",
+        borderwidth=0,
+        font=("Consolas", 9),
+        background=c("LOG_BG"),
+        foreground=c("LOG_FG"),
+        insertbackground=c("LOG_FG"),
+    )
+    text_log.pack(fill=tk.BOTH, expand=True)
+    sync_log_visibility()
+
+
+    def refresh_theme_widgets():
+        canvas.configure(bg=c("CANVAS_BG"))
+        text_log.configure(background=c("LOG_BG"), foreground=c("LOG_FG"), insertbackground=c("LOG_FG"))
+        btn_update.configure(
+            bg=c("PRIMARY_HI"),
+            fg=c("BG_APP"),
+            activebackground=c("PRIMARY"),
+            activeforeground=c("TEXT_MAIN"),
+        )
+        btn_theme.config(text=f"Tema: {'oscuro' if theme_var.get() == 'dark' else 'claro'}")
+        render_list()
+
+    def toggle_theme():
+        theme_var.set("light" if theme_var.get() == "dark" else "dark")
+        apply_theme()
+        refresh_theme_widgets()
+
+    btn_theme.config(command=toggle_theme)
 
     def set_buttons_enabled(enabled: bool):
         state = "normal" if enabled else "disabled"
-        for b in (btn_all, btn_none, btn_refresh, btn_update, btn_save):
-            b.config(state=state)
+        for b in (btn_all, btn_none, btn_refresh, btn_update, btn_save, entry_search, combo_filter):
+            try:
+                b.config(state=state)
+            except Exception:
+                pass
+        if enabled:
+            try:
+                btn_update.configure(
+                    bg=c("PRIMARY_HI"),
+                    fg=c("BG_APP"),
+                    activebackground=c("PRIMARY"),
+                    activeforeground=c("TEXT_MAIN"),
+                )
+            except Exception:
+                pass
+        else:
+            try:
+                btn_update.configure(
+                    bg=c("PRIMARY_DISABLED"),
+                    fg=c("TEXT_MUTED"),
+                    activebackground=c("PRIMARY_DISABLED"),
+                    activeforeground=c("TEXT_MUTED"),
+                )
+            except Exception:
+                pass
+        if enabled:
+            combo_filter.config(state="readonly")
+        else:
+            combo_filter.config(state="disabled")
 
-    set_buttons_enabled(False)
+    def visible_items():
+        q = search_var.get().strip().lower()
+        mode = filter_var.get().strip().lower() or "all"
+        items = []
+        for var, pkg in checks:
+            haystack = " ".join([
+                pkg.get("Name", ""),
+                pkg.get("Id", ""),
+                pkg.get("Version", ""),
+                pkg.get("Available", ""),
+                pkg.get("Source", ""),
+            ]).lower()
 
-    progress = ttk.Progressbar(root, length=700, mode='determinate', maximum=100)
-    progress.pack(pady=6, padx=10, fill=tk.X)
+            if q and q not in haystack:
+                continue
+            if mode == "selected" and not var.get():
+                continue
+            if mode == "explicit" and not pkg.get("RequiresExplicitTarget"):
+                continue
+            if mode == "unknown" and (pkg.get("Version") or "").strip().lower() not in ("unknown", "desconocida", ""):
+                continue
+            items.append((var, pkg))
+        return items
 
-    pkgs = []
-    checks = []
-    current_process = None
-    cancel_flag = tk.BooleanVar(value=False)
+    def update_summary_ui():
+        selected_count = sum(1 for var, _ in checks if var.get())
+        explicit_count = sum(1 for _, pkg in checks if pkg.get("RequiresExplicitTarget"))
+        unknown_count = sum(1 for _, pkg in checks if (pkg.get("Version") or "").strip().lower() in ("unknown", "desconocida", ""))
+        stats_total_var.set(str(len(pkgs)))
+        stats_selected_var.set(str(selected_count))
+        stats_special_var.set(str(explicit_count + unknown_count))
 
-    def set_current_process(proc):
-        nonlocal current_process
-        current_process = proc
+        visible_count = len(visible_items())
+        if pkgs:
+            headline_var.set(f"{visible_count} visibles · {len(pkgs)} detectados")
+            subtitle_var.set("Actualizaciones disponibles detectadas con winget")
+        else:
+            headline_var.set("Sin actualizaciones pendientes")
+            subtitle_var.set("Todo parece estar al día")
 
-    def render_list():
+        btn_update.config(text=f"Actualizar seleccionados ({selected_count})")
+
+    def set_pkg_selected(var, _pkg, value):
+        var.set(value)
+        update_summary_ui()
+        render_list()
+
+    def make_chip(parent, text, fg=c("PILL_TEXT"), bg=c("PILL_BG")):
+        lbl = tk.Label(parent, text=text, bg=bg, fg=fg, padx=8, pady=2, font=("Segoe UI", 8, "bold"), relief="flat")
+        return lbl
+
+    def render_list(*_args):
         for w in list(scroll.children.values()):
             w.destroy()
-        checks.clear()
 
-        n = len(pkgs)
-        if n == 0:
-            lbl_hint.config(text="Todos los programas disponibles están actualizados.")
-            lbl_count.config(text="Tienes 0 programas con actualización disponible")
+        items = visible_items()
+        if not pkgs:
+            empty = ttk.Frame(scroll, style="Card.TFrame", padding=(18, 18))
+            empty.pack(fill=tk.X, padx=12, pady=12)
+            ttk.Label(empty, text="No hay actualizaciones disponibles", style="CardTitle.TLabel").pack(anchor="w")
+            ttk.Label(empty, text="Cuando winget encuentre paquetes actualizables aparecerán aquí.", style="SmallMuted.TLabel").pack(anchor="w", pady=(6, 0))
             _update_scrollregion()
             return
 
-        lbl_hint.config(text="Seleccione los programas que desea actualizar:")
-        lbl_count.config(text=f"Tienes {n} programa{'s' if n != 1 else ''} con actualización disponible")
+        if not items:
+            empty = ttk.Frame(scroll, style="Card.TFrame", padding=(18, 18))
+            empty.pack(fill=tk.X, padx=12, pady=12)
+            ttk.Label(empty, text="No hay resultados para ese filtro", style="CardTitle.TLabel").pack(anchor="w")
+            ttk.Label(empty, text="Prueba otra búsqueda o cambia la vista activa.", style="SmallMuted.TLabel").pack(anchor="w", pady=(6, 0))
+            _update_scrollregion()
+            return
 
-        for pkg in pkgs:
-            var = tk.BooleanVar(value=True)
-            extra = " [requiere destino explícito]" if pkg.get("RequiresExplicitTarget") else ""
-            label = f"{pkg['Name']}  [{pkg['Id']}]  {pkg['Version']} → {pkg['Available']}  [{pkg.get('Source','')}]" + extra
-            cb = ttk.Checkbutton(scroll, text=label, variable=var)
-            cb.pack(anchor="w", fill=tk.X, padx=2, pady=1)
-            cb.bind("<Enter>", bind_mousewheel)
-            cb.bind("<Leave>", unbind_mousewheel)
-            checks.append((var, pkg))
+        for idx, (var, pkg) in enumerate(items):
+            card_outer = tk.Frame(scroll, bg=c("BORDER"), highlightthickness=0, bd=0)
+            card_outer.pack(fill=tk.X, padx=10, pady=(4 if idx == 0 else 2, 2))
+
+            card = tk.Frame(card_outer, bg=c("BG_SURFACE"), padx=12, pady=10)
+            card.pack(fill=tk.X, padx=1, pady=1)
+
+            top = tk.Frame(card, bg=c("BG_SURFACE"))
+            top.pack(fill=tk.X)
+
+            cb = ttk.Checkbutton(top, variable=var, command=update_summary_ui)
+            cb.pack(side=tk.LEFT, anchor="n", pady=(1, 0))
+
+            main = tk.Frame(top, bg=c("BG_SURFACE"))
+            main.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(8, 0))
+
+            tk.Label(main, text=pkg["Name"], bg=c("BG_SURFACE"), fg=c("TEXT_MAIN"), font=("Segoe UI Semibold", 10), anchor="w").pack(anchor="w")
+            tk.Label(main, text=pkg["Id"], bg=c("BG_SURFACE"), fg=c("TEXT_SOFT"), font=("Segoe UI", 9), anchor="w").pack(anchor="w", pady=(1, 0))
+            tk.Label(
+                main,
+                text=f"{pkg['Version']}  →  {pkg['Available']}   ·   {pkg.get('Source', '') or 'origen desconocido'}",
+                bg=c("BG_SURFACE"),
+                fg=c("TEXT_MUTED"),
+                font=("Segoe UI", 9),
+                anchor="w",
+            ).pack(anchor="w", pady=(4, 0))
+
+            chips = tk.Frame(main, bg=c("BG_SURFACE"))
+            chips.pack(anchor="w", pady=(6, 0))
+            if pkg.get("RequiresExplicitTarget"):
+                chip = make_chip(chips, "requiere destino explícito")
+                chip.pack(side=tk.LEFT, padx=(0, 6))
+            if (pkg.get("Version") or "").strip().lower() in ("unknown", "desconocida", ""):
+                chip = make_chip(chips, "versión desconocida", fg=c("PILL_WARN_TEXT"), bg=c("PILL_WARN_BG"))
+                chip.pack(side=tk.LEFT, padx=(0, 6))
+
+            actions = tk.Frame(top, bg=c("BG_SURFACE"))
+            actions.pack(side=tk.RIGHT, anchor="ne")
+            ttk.Button(actions, text="Marcar", width=9, command=lambda v=var, p=pkg: set_pkg_selected(v, p, True)).pack(pady=(0, 4))
+            ttk.Button(actions, text="Quitar", width=9, command=lambda v=var, p=pkg: set_pkg_selected(v, p, False)).pack()
+
+            sep = tk.Frame(scroll, bg=c("BORDER"), height=1)
+            sep.pack(fill=tk.X, padx=18, pady=(0, 2))
 
         _update_scrollregion()
         canvas.yview_moveto(0)
 
     def refresh_list_async():
         set_buttons_enabled(False)
-        text_log.insert(tk.END, "Actualizando listado...\n")
-        text_log.see(tk.END)
+        set_status("Actualizando listado...")
+        append_log("Actualizando listado...")
 
         def refresh_task():
             new_pkgs = parse_winget_output() or []
@@ -285,17 +651,24 @@ def build_gui():
             def apply():
                 pkgs.clear()
                 pkgs.extend(new_pkgs)
+                checks.clear()
+                for pkg in pkgs:
+                    var = tk.BooleanVar(value=True)
+                    var.trace_add("write", lambda *_: update_summary_ui())
+                    checks.append((var, pkg))
                 render_list()
+                update_summary_ui()
                 set_buttons_enabled(True)
-                text_log.insert(tk.END, "Listado actualizado.\n")
-                text_log.see(tk.END)
+                set_status("Listado actualizado")
+                append_log("Listado actualizado.")
 
             root.after(0, apply)
 
         threading.Thread(target=refresh_task, daemon=True).start()
 
-    text_log.insert(tk.END, "Inicializando...\n")
-    text_log.see(tk.END)
+    refresh_theme_widgets()
+    append_log("Inicializando...")
+    set_buttons_enabled(False)
 
     def init_task():
         def proceed_after_install(ok: bool):
@@ -306,9 +679,8 @@ def build_gui():
                 )
                 return
 
-            lbl_hint.config(text="Cargando lista de programas...")
-            text_log.insert(tk.END, "Obteniendo lista de paquetes...\n")
-            text_log.see(tk.END)
+            set_status("Obteniendo lista de paquetes...")
+            append_log("Obteniendo lista de paquetes...")
 
             def fetch_task():
                 new_pkgs = parse_winget_output() or []
@@ -316,10 +688,16 @@ def build_gui():
                 def apply():
                     pkgs.clear()
                     pkgs.extend(new_pkgs)
+                    checks.clear()
+                    for pkg in pkgs:
+                        var = tk.BooleanVar(value=True)
+                        var.trace_add("write", lambda *_: update_summary_ui())
+                        checks.append((var, pkg))
                     render_list()
+                    update_summary_ui()
                     set_buttons_enabled(True)
-                    text_log.insert(tk.END, "Listo.\n")
-                    text_log.see(tk.END)
+                    set_status("Listo")
+                    append_log("Listo.")
 
                 root.after(0, apply)
 
@@ -350,6 +728,9 @@ def build_gui():
     btn_all.config(command=lambda: [var.set(True) for var, _ in checks])
     btn_none.config(command=lambda: [var.set(False) for var, _ in checks])
 
+    search_var.trace_add("write", lambda *_: (render_list(), update_summary_ui()))
+    filter_var.trace_add("write", lambda *_: (render_list(), update_summary_ui()))
+
     def do_update():
         selected = [p for v, p in checks if v.get()]
         if not selected:
@@ -360,6 +741,7 @@ def build_gui():
         btn_cancel.config(state="normal")
         set_buttons_enabled(False)
         progress.config(mode='determinate', maximum=len(selected), value=0)
+        set_status(f"Actualizando {len(selected)} paquete(s)...")
 
         results = []
 
@@ -465,9 +847,11 @@ def build_gui():
                 if detail_blocks:
                     body += "\n\n" + "\n\n".join(detail_blocks)
 
+                current_results["last"] = body
                 progress.config(value=0)
                 refresh_list_async()
                 btn_cancel.config(state="disabled")
+                set_status("Proceso finalizado")
 
                 if installer_failed or failed:
                     root.after(200, lambda: messagebox.showwarning("Finalizado con incidencias", body))
@@ -480,10 +864,7 @@ def build_gui():
             total = len(selected)
 
             def ui_print(msg):
-                text_log.after(0, lambda: (
-                    text_log.insert(tk.END, msg if msg.endswith("\n") else msg + "\n"),
-                    text_log.see(tk.END)
-                ))
+                text_log.after(0, lambda: append_log(msg))
 
             def ask_yes_no(title, message):
                 result = {"value": False}
@@ -502,6 +883,7 @@ def build_gui():
                     ui_print("⛔ Operación cancelada por el usuario.\n")
                     break
 
+                set_status_async(f"Actualizando {idx}/{total}: {pkg['Name']}")
                 ui_print(f"[{idx}/{total}] 🔄 {pkg['Name']} ({pkg['Version']} → {pkg['Available']}) [{pkg['Id']}]")
 
                 running = get_running_process_hints(pkg["Id"])
@@ -631,10 +1013,8 @@ def build_gui():
         except Exception:
             pass
 
-        text_log.after(0, lambda: (
-            text_log.insert(tk.END, "⛔ Cancelando actualización...\n"),
-            text_log.see(tk.END)
-        ))
+        log_ui("⛔ Cancelando actualización...")
+        set_status("Cancelando actualización...")
 
     btn_cancel.config(command=cancel_update)
     btn_update.config(command=do_update)
