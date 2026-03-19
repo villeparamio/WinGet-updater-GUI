@@ -348,6 +348,12 @@ class ClickableFrame(QFrame):
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
+            child = self.childAt(event.position().toPoint())
+            while child is not None:
+                if isinstance(child, (QCheckBox, QPushButton)):
+                    super().mousePressEvent(event)
+                    return
+                child = child.parentWidget()
             self.clicked.emit()
         super().mousePressEvent(event)
 
@@ -863,7 +869,7 @@ class MainWindow(QMainWindow):
         return card
 
     def on_pkg_checked(self, pkg, state):
-        pkg["_selected"] = state == Qt.Checked
+        pkg["_selected"] = int(state) != 0
         self.update_summary_ui()
 
     def toggle_pkg_from_row(self, pkg, checkbox):
