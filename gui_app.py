@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
     QComboBox,
+    QDialog,
     QFileDialog,
     QFrame,
     QGridLayout,
@@ -311,24 +312,26 @@ def try_install_winget(log_fn=None):
     return ok
 
 
-class QtTextAdapter:
-    def __init__(self, text_edit):
-        self.text_edit = text_edit
+class ThreadSafeLogAdapter:
+    def __init__(self, emit_log):
+        self.emit_log = emit_log
+        self.lines = []
 
     def after(self, _delay, callback):
         callback()
 
     def insert(self, _index, text):
-        self.text_edit.moveCursor(QTextCursor.End)
-        self.text_edit.insertPlainText(text)
+        clean = text if text.endswith("\n") else text + "\n"
+        parts = clean.splitlines()
+        if parts:
+            self.lines.extend(parts)
+        self.emit_log(clean.rstrip("\n"))
 
     def see(self, _index):
-        self.text_edit.moveCursor(QTextCursor.End)
-        self.text_edit.ensureCursorVisible()
+        return
 
     def index(self, spec):
-        doc = self.text_edit.document()
-        blocks = max(doc.blockCount(), 1)
+        blocks = max(len(self.lines), 1)
         if spec == "end-1c":
             return f"{blocks}.0"
         if spec == "end-2l linestart":
@@ -336,11 +339,8 @@ class QtTextAdapter:
         return f"{blocks}.0"
 
     def delete(self, _start, _end):
-        text = self.text_edit.toPlainText().splitlines()
-        if text:
-            text = text[:-1]
-        self.text_edit.setPlainText("\n".join(text) + ("\n" if text else ""))
-        self.see("end")
+        if self.lines:
+            self.lines = self.lines[:-1]
 
 
 class ClickableFrame(QFrame):
@@ -392,7 +392,7 @@ class UpdateThread(QThread):
             pass
 
     def run(self):
-        self.text_adapter = QtTextAdapter(self.parent().text_log)
+        self.text_adapter = ThreadSafeLogAdapter(self.log.emit)
         results = []
 
         def set_current_process(proc):
@@ -924,6 +924,48 @@ class MainWindow(QMainWindow):
             T("retry_close_prompt", name=name, processes=procs_txt),
         ) == QMessageBox.Yes
 
+    def show_result_dialog(self, title, body, warning=False):
+        dlg = QDialog(self)
+        dlg.setWindowTitle(title)
+        dlg.setModal(True)
+        dlg.setMinimumWidth(520)
+        dlg.setMaximumWidth(620)
+        dlg.setStyleSheet(
+            "QDialog { background-color:#073642; color:#eee8d5; }"
+            "QLabel { color:#eee8d5; background:transparent; }"
+            "QPushButton { background:#0a3a46; color:#eee8d5; border:1px solid #4f676e; border-radius:8px; padding:7px 12px; min-width:90px; }"
+            "QPushButton:hover { background:#104553; border-color:#657b83; }"
+        )
+
+        layout = QVBoxLayout(dlg)
+        layout.setContentsMargins(18, 18, 18, 16)
+        layout.setSpacing(14)
+
+        top = QHBoxLayout()
+        top.setSpacing(14)
+
+        icon_label = QLabel("⚠" if warning else "ℹ")
+        icon_label.setStyleSheet("font-size: 28pt; color: #b58900; background: transparent;")
+        icon_label.setAlignment(Qt.AlignTop)
+        top.addWidget(icon_label, 0, Qt.AlignTop)
+
+        text_label = QLabel(body)
+        text_label.setWordWrap(True)
+        text_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        text_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        top.addWidget(text_label, 1)
+
+        layout.addLayout(top)
+
+        buttons = QHBoxLayout()
+        buttons.addStretch(1)
+        ok_btn = QPushButton("OK")
+        ok_btn.clicked.connect(dlg.accept)
+        buttons.addWidget(ok_btn)
+        layout.addLayout(buttons)
+
+        dlg.exec()
+
     def start_update(self):
         selected = [pkg for pkg in self.pkgs if pkg.get("_selected", True)]
         if not selected:
@@ -982,9 +1024,9 @@ class MainWindow(QMainWindow):
         self.set_status(T("status_finished"))
         self.refresh_list_async(initial=False)
         if installer_failed or failed:
-            QMessageBox.warning(self, T("complete_with_issues_title"), body)
+            self.show_result_dialog(T("complete_with_issues_title"), body, warning=True)
         else:
-            QMessageBox.information(self, T("complete_title"), body)
+            self.show_result_dialog(T("complete_title"), body, warning=False)
 
 
 def build_gui():
