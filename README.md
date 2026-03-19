@@ -124,6 +124,15 @@ Además:
 
 ## 📜 Changelog
 
+### v1.2
+- La interfaz gráfica se migra a **PySide6**.
+- Se renueva la GUI con un diseño más moderno.
+- Se mejora la lógica interna de actualización y clasificación de resultados.
+- Se mejora el procesamiento del listado de paquetes de `winget`.
+- Se añade soporte para paquetes que requieren destino explícito.
+- Se incorpora soporte multidioma.
+- Se añade selector de idioma en la interfaz.
+
 ### v1.1
 - Se mejora la clasificación de resultados de `winget`.
 - Se diferencia entre:
