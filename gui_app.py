@@ -31,6 +31,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from i18n import I18N
 from winget_core import (
     parse_winget_output,
     precheck_upgrade,
@@ -42,6 +43,14 @@ from winget_core import (
 )
 
 APP_VERSION = "v1.2"
+I18N_OBJ = I18N(Path(__file__).resolve().parent)
+T = I18N_OBJ.t
+
+
+LANGUAGE_NAMES = {
+    "es": lambda: T("lang_es"),
+    "en": lambda: T("lang_en"),
+}
 
 SOLARIZED_DARK_QSS = """
 QMainWindow, QWidget#central {
@@ -255,7 +264,7 @@ def ensure_admin():
 
     rc = ctypes.windll.shell32.ShellExecuteW(None, "runas", exe, params, cwd, 1)
     if rc <= 32:
-        QMessageBox.critical(None, "Error al elevar permisos", f"No se pudo solicitar privilegios de administrador. Código ShellExecuteW: {rc}")
+        QMessageBox.critical(None, T("error_admin_title"), T("error_admin_body", code=rc))
         return
     sys.exit(0)
 
@@ -275,7 +284,7 @@ def try_install_winget(log_fn=None):
         else:
             print(msg)
 
-    log("⚠ winget no está disponible. Intentando instalar Microsoft App Installer (winget)...")
+    log(T("winget_install_start"))
     bundle_path = os.path.join(tempfile.gettempdir(), "AppInstaller.msixbundle")
     ps = [
         "powershell", "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass",
@@ -283,7 +292,7 @@ def try_install_winget(log_fn=None):
     ]
     r = subprocess.run(ps, capture_output=True, text=True)
     if r.returncode != 0:
-        log("No se pudo descargar el instalador automáticamente. Abriendo Microsoft Store…")
+        log(T("winget_install_download_failed"))
         webbrowser.open("ms-windows-store://pdp/?ProductId=9NBLGGH4NNS1")
         return False
 
@@ -293,12 +302,12 @@ def try_install_winget(log_fn=None):
     ]
     r2 = subprocess.run(ps_install, capture_output=True, text=True)
     if r2.returncode != 0:
-        log("La instalación silenciosa falló (posibles dependencias Microsoft.UI.Xaml / VCLibs). Abriendo Microsoft Store…")
+        log(T("winget_install_failed"))
         webbrowser.open("ms-windows-store://pdp/?ProductId=9NBLGGH4NNS1")
         return False
 
     ok = has_winget()
-    log("✅ winget instalado correctamente." if ok else "❌ winget sigue sin estar disponible.")
+    log(T("winget_install_ok") if ok else T("winget_still_missing"))
     return ok
 
 
@@ -386,23 +395,23 @@ class UpdateThread(QThread):
         total = len(self.selected)
         for idx, pkg in enumerate(self.selected, start=1):
             if self.cancelled:
-                self.log.emit("⛔ Operación cancelada por el usuario.")
+                self.log.emit(T("log_operation_cancelled"))
                 break
 
-            self.status.emit(f"Actualizando {idx}/{total}: {pkg['Name']}")
-            self.log.emit(f"[{idx}/{total}] 🔄 {pkg['Name']} ({pkg['Version']} → {pkg['Available']}) [{pkg['Id']}]")
+            self.status.emit(T("status_updating_item", index=idx, total=total, name=pkg["Name"]))
+            self.log.emit(T("log_update_item", index=idx, total=total, name=pkg["Name"], version=pkg["Version"], available=pkg["Available"], id=pkg["Id"]))
 
             running = get_running_process_hints(pkg["Id"])
             if running:
-                self.log.emit(f"⚠ Posibles procesos abiertos que pueden bloquear la instalación: {', '.join(running)}")
+                self.log.emit(T("log_blocking_processes", processes=", ".join(running)))
 
             can_upgrade, pre_status, pre_output = precheck_upgrade(pkg)
             if not can_upgrade:
                 if pre_status in ("no_longer_pending", "not_applicable", "not_found"):
                     mapping = {
-                        "no_longer_pending": ("↪ Saltado: winget ya no lo considera pendiente de actualización.", "Winget ya no considera este paquete pendiente de actualización"),
-                        "not_applicable": ("↪ Saltado: la actualización no aplica actualmente a este sistema o instalación.", "La actualización no aplica actualmente"),
-                        "not_found": ("↪ Saltado: winget no localiza un paquete instalado que coincida con el ID.", "winget no encuentra coincidencia instalada para el ID"),
+                        "no_longer_pending": (T("log_skip_no_longer_pending"), T("reason_no_longer_pending")),
+                        "not_applicable": (T("log_skip_not_applicable"), T("reason_not_applicable")),
+                        "not_found": (T("log_skip_not_found"), T("reason_not_found")),
                     }
                     msg, reason = mapping[pre_status]
                     self.log.emit(msg)
@@ -414,22 +423,22 @@ class UpdateThread(QThread):
             result = perform_upgrade_attempt(pkg, self.text_adapter, type("CancelFlag", (), {"get": lambda _self: self.cancelled})(), set_current_process, use_exact=True)
 
             if result["status"] == "updated":
-                self.log.emit("✅ Actualizado correctamente.")
+                self.log.emit(T("log_updated"))
             elif result["status"] == "updated_restart_required":
-                self.log.emit("✅ Actualizado correctamente. Es necesario reiniciar la aplicación.")
+                self.log.emit(T("log_updated_restart_required"))
             elif result["status"] == "no_longer_pending":
-                self.log.emit("↪ Resuelto: winget ya no lo considera pendiente de actualización.")
+                self.log.emit(T("log_resolved_no_longer_pending"))
             elif result["status"] == "already_installed":
-                self.log.emit("↪ Resuelto: el instalador indica que ya está instalada la misma versión o una más nueva.")
+                self.log.emit(T("log_resolved_already_installed"))
             elif result["status"] == "different_install_technology":
-                self.log.emit("↪ No se puede actualizar en sitio: la versión nueva usa una tecnología de instalación distinta.")
+                self.log.emit(T("log_resolved_different_tech"))
 
             if (
                 not pkg.get("RequiresExplicitTarget")
                 and result["status"] in ("not_applicable", "not_found", "no_longer_pending")
                 and should_retry_without_exact(result)
             ):
-                self.log.emit("↻ Reintentando sin --exact por posible problema de coincidencia estricta...")
+                self.log.emit(T("log_retry_without_exact"))
                 retry_no_exact = perform_upgrade_attempt(pkg, self.text_adapter, type("CancelFlag", (), {"get": lambda _self: self.cancelled})(), set_current_process, use_exact=False)
                 if retry_no_exact["status"] != "cancelled":
                     retry_no_exact["raw_output"] = (
@@ -441,7 +450,7 @@ class UpdateThread(QThread):
                     result = retry_no_exact
 
             if result["status"] == "cancelled":
-                self.log.emit("⛔ Cancelado por el usuario.")
+                self.log.emit(T("log_cancelled"))
                 results.append(result)
                 self.package_done.emit(result)
                 self.finished_summary.emit(results)
@@ -451,11 +460,11 @@ class UpdateThread(QThread):
             if should_offer_close_retry(result, running_after_fail):
                 procs_txt = ", ".join(running_after_fail)
                 if self.ask_close_retry(pkg["Name"], procs_txt):
-                    self.log.emit(f"⚠ Cerrando procesos para reintento: {procs_txt}")
+                    self.log.emit(T("log_closing_processes", processes=procs_txt))
                     for kr in kill_processes(running_after_fail):
-                        self.log.emit(f"   - {'Cerrado' if kr['ok'] else 'No se pudo cerrar'}: {kr['process']}")
+                        self.log.emit(T("log_process_closed", process=kr["process"]) if kr["ok"] else T("log_process_not_closed", process=kr["process"]))
                     time.sleep(1.5)
-                    self.log.emit("🔁 Reintentando instalación una vez...")
+                    self.log.emit(T("log_retry_once"))
                     retry_result = perform_upgrade_attempt(pkg, self.text_adapter, type("CancelFlag", (), {"get": lambda _self: self.cancelled})(), set_current_process)
                     if retry_result["status"] != "cancelled":
                         retry_result["raw_output"] = (
@@ -475,12 +484,13 @@ class UpdateThread(QThread):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle(f"Winget Updater {APP_VERSION} (by Villeparamio)")
+        self.setWindowTitle(T("app_title", version=APP_VERSION))
         self.resize(1280, 900)
         self.setMinimumSize(1040, 720)
         self.pkgs = []
         self.loader_thread = None
         self.update_thread = None
+        self.current_lang = I18N_OBJ.lang
         self._build_ui()
         self.refresh_list_async(initial=True)
 
@@ -493,10 +503,10 @@ class MainWindow(QMainWindow):
 
         header = QHBoxLayout()
         left = QVBoxLayout()
-        hero = QLabel("WinGet Updater")
+        hero = QLabel(T("app_name"))
         hero.setObjectName("hero")
         hero.setAttribute(Qt.WA_StyledBackground, False)
-        self.subtitle = QLabel("Actualizaciones disponibles detectadas con winget")
+        self.subtitle = QLabel(T("subtitle_detected"))
         self.subtitle.setObjectName("subtitle")
         self.subtitle.setAttribute(Qt.WA_StyledBackground, False)
         left.addWidget(hero)
@@ -505,13 +515,13 @@ class MainWindow(QMainWindow):
 
         actions = QHBoxLayout()
         actions.setSpacing(10)
-        self.btn_refresh = QPushButton("Refrescar")
+        self.btn_refresh = QPushButton(T("btn_refresh"))
         self.btn_refresh.setMinimumWidth(108)
-        self.btn_save = QPushButton("Guardar log")
+        self.btn_save = QPushButton(T("btn_save_log"))
         self.btn_save.setMinimumWidth(122)
-        self.btn_toggle_log = QPushButton("Mostrar log")
+        self.btn_toggle_log = QPushButton(T("btn_show_log"))
         self.btn_toggle_log.setMinimumWidth(122)
-        self.btn_update = QPushButton("Actualizar seleccionados (0)")
+        self.btn_update = QPushButton(T("btn_update_selected", count=0))
         self.btn_update.setObjectName("primaryButton")
         self.btn_update.setMinimumWidth(238)
         actions.addWidget(self.btn_refresh)
@@ -522,9 +532,9 @@ class MainWindow(QMainWindow):
         root.addLayout(header)
 
         stats = QGridLayout()
-        self.stat_total = self._make_stat("0", "Disponibles")
-        self.stat_selected = self._make_stat("0", "Seleccionados")
-        self.stat_special = self._make_stat("0", "Especiales / manuales")
+        self.stat_total = self._make_stat("0", T("stats_available"))
+        self.stat_selected = self._make_stat("0", T("stats_selected"))
+        self.stat_special = self._make_stat("0", T("stats_special"))
         stats.addWidget(self.stat_total[0], 0, 0)
         stats.addWidget(self.stat_selected[0], 0, 1)
         stats.addWidget(self.stat_special[0], 0, 2)
@@ -534,25 +544,31 @@ class MainWindow(QMainWindow):
         toolbar = QHBoxLayout(toolbar_frame)
         toolbar.setContentsMargins(12, 10, 12, 10)
         toolbar.setSpacing(10)
-        toolbar.addWidget(QLabel("Buscar"))
+        toolbar.addWidget(QLabel(T("label_search")))
         self.search = QLineEdit()
-        self.search.setPlaceholderText("Nombre, ID, versión...")
+        self.search.setPlaceholderText(T("search_placeholder"))
         self.search.setMinimumWidth(360)
         toolbar.addWidget(self.search, 1)
-        toolbar.addWidget(QLabel("Vista"))
+        self.lbl_view = QLabel(T("label_view"))
+        toolbar.addWidget(self.lbl_view)
         self.filter_combo = QComboBox()
-        self.filter_combo.addItems(["all", "selected", "explicit", "unknown"])
+        self.filter_combo.addItems([T("filter_all"), T("filter_selected"), T("filter_explicit"), T("filter_unknown")])
         self.filter_combo.setMinimumWidth(132)
         toolbar.addWidget(self.filter_combo)
-        self.btn_all = QPushButton("Seleccionar todo")
+        self.lbl_language = QLabel(T("label_language"))
+        toolbar.addWidget(self.lbl_language)
+        self.lang_combo = QComboBox()
+        self.lang_combo.setMinimumWidth(132)
+        toolbar.addWidget(self.lang_combo)
+        self.btn_all = QPushButton(T("btn_select_all"))
         self.btn_all.setMinimumWidth(140)
-        self.btn_none = QPushButton("Seleccionar nada")
+        self.btn_none = QPushButton(T("btn_select_none"))
         self.btn_none.setMinimumWidth(140)
         toolbar.addWidget(self.btn_all)
         toolbar.addWidget(self.btn_none)
         root.addWidget(toolbar_frame)
 
-        self.headline = QLabel("Cargando lista de programas...")
+        self.headline = QLabel(T("headline_loading"))
         self.headline.setObjectName("headline")
         self.headline.setAttribute(Qt.WA_StyledBackground, False)
         root.addWidget(self.headline)
@@ -583,7 +599,7 @@ class MainWindow(QMainWindow):
         )
         footer_grid.addWidget(self.progress, 0, 0)
 
-        self.btn_cancel = QPushButton("Cancelar actualización")
+        self.btn_cancel = QPushButton(T("btn_cancel_update"))
         self.btn_cancel.setObjectName("dangerButton")
         self.btn_cancel.setEnabled(False)
         self.btn_cancel.setMinimumWidth(190)
@@ -596,7 +612,7 @@ class MainWindow(QMainWindow):
         )
         footer_grid.addWidget(self.btn_cancel, 0, 1, alignment=Qt.AlignVCenter)
 
-        self.footer_status = QLabel("Listo")
+        self.footer_status = QLabel(T("status_ready"))
         self.footer_status.setObjectName("muted")
         self.footer_status.setAttribute(Qt.WA_StyledBackground, False)
         footer_grid.addWidget(self.footer_status, 1, 0, 1, 2)
@@ -607,7 +623,7 @@ class MainWindow(QMainWindow):
         self.log_panel = QFrame(objectName="surface")
         log_layout = QVBoxLayout(self.log_panel)
         log_layout.setContentsMargins(12, 12, 12, 12)
-        log_layout.addWidget(QLabel("Log de ejecución"))
+        log_layout.addWidget(QLabel(T("log_title")))
         self.text_log = QTextEdit()
         self.text_log.setReadOnly(True)
         self.text_log.setMinimumHeight(180)
@@ -624,9 +640,12 @@ class MainWindow(QMainWindow):
         self.btn_none.clicked.connect(lambda: self.set_all_selected(False))
         self.search.textChanged.connect(self.render_list)
         self.filter_combo.currentTextChanged.connect(self.render_list)
+        self.lang_combo.currentIndexChanged.connect(self.change_language)
 
         self._set_enabled(False)
-        self.append_log("Inicializando...")
+        self.append_log(T("log_initializing"))
+
+        self.populate_language_combo()
 
         icon_path = Path(__file__).with_name("winget_updater.ico")
         if icon_path.exists():
@@ -647,6 +666,17 @@ class MainWindow(QMainWindow):
         layout.addWidget(t)
         return frame, v, t
 
+    def populate_language_combo(self):
+        self.lang_combo.blockSignals(True)
+        self.lang_combo.clear()
+        for code in I18N_OBJ.available_languages():
+            label = LANGUAGE_NAMES.get(code, lambda c=code: c)()
+            self.lang_combo.addItem(label, code)
+        idx = self.lang_combo.findData(self.current_lang)
+        if idx >= 0:
+            self.lang_combo.setCurrentIndex(idx)
+        self.lang_combo.blockSignals(False)
+
     def append_log(self, msg):
         self.text_log.moveCursor(QTextCursor.End)
         self.text_log.insertPlainText(msg if msg.endswith("\n") else msg + "\n")
@@ -658,14 +688,47 @@ class MainWindow(QMainWindow):
     def toggle_log(self):
         visible = not self.log_panel.isVisible()
         self.log_panel.setVisible(visible)
-        self.btn_toggle_log.setText("Ocultar log" if visible else "Mostrar log")
+        self.btn_toggle_log.setText(T("btn_hide_log") if visible else T("btn_show_log"))
+
+    def change_language(self):
+        code = self.lang_combo.currentData()
+        if not code or code == self.current_lang:
+            return
+        self.current_lang = code
+        I18N_OBJ.set_language(code)
+        self.retranslate_ui()
+
+    def retranslate_ui(self):
+        self.setWindowTitle(T("app_title", version=APP_VERSION))
+        self.subtitle.setText(T("subtitle_detected") if self.pkgs else T("subtitle_up_to_date"))
+        self.btn_refresh.setText(T("btn_refresh"))
+        self.btn_save.setText(T("btn_save_log"))
+        self.btn_toggle_log.setText(T("btn_hide_log") if self.log_panel.isVisible() else T("btn_show_log"))
+        self.btn_cancel.setText(T("btn_cancel_update"))
+        self.btn_all.setText(T("btn_select_all"))
+        self.btn_none.setText(T("btn_select_none"))
+        self.stat_total[2].setText(T("stats_available"))
+        self.stat_selected[2].setText(T("stats_selected"))
+        self.stat_special[2].setText(T("stats_special"))
+        self.lbl_view.setText(T("label_view"))
+        self.lbl_language.setText(T("label_language"))
+        self.search.setPlaceholderText(T("search_placeholder"))
+        current_filter = self.filter_combo.currentIndex()
+        self.filter_combo.blockSignals(True)
+        self.filter_combo.clear()
+        self.filter_combo.addItems([T("filter_all"), T("filter_selected"), T("filter_explicit"), T("filter_unknown")])
+        self.filter_combo.setCurrentIndex(max(current_filter, 0))
+        self.filter_combo.blockSignals(False)
+        self.populate_language_combo()
+        self.update_summary_ui()
+        self.render_list()
 
     def save_log(self):
-        path, _ = QFileDialog.getSaveFileName(self, "Guardar log", "", "Texto (*.txt)")
+        path, _ = QFileDialog.getSaveFileName(self, T("save_dialog_title"), "", "Texto (*.txt)")
         if not path:
             return
         Path(path).write_text(self.text_log.toPlainText(), encoding="utf-8")
-        QMessageBox.information(self, "Guardado", f"Log guardado en:\n{path}")
+        QMessageBox.information(self, T("saved_title"), T("saved_message", path=path))
 
     def _set_enabled(self, enabled):
         for widget in (self.btn_refresh, self.btn_save, self.btn_update, self.btn_all, self.btn_none, self.search, self.filter_combo):
@@ -696,9 +759,9 @@ class MainWindow(QMainWindow):
         self.stat_selected[1].setText(str(selected_count))
         self.stat_special[1].setText(str(explicit_count + unknown_count))
         visible_count = len(self.visible_items())
-        self.headline.setText(f"{visible_count} visibles · {len(self.pkgs)} detectados" if self.pkgs else "Sin actualizaciones pendientes")
-        self.subtitle.setText("Actualizaciones disponibles detectadas con winget" if self.pkgs else "Todo parece estar al día")
-        self.btn_update.setText(f"Actualizar seleccionados ({selected_count})")
+        self.headline.setText(T("headline_visible_detected", visible=visible_count, total=len(self.pkgs)) if self.pkgs else T("headline_none"))
+        self.subtitle.setText(T("subtitle_detected") if self.pkgs else T("subtitle_up_to_date"))
+        self.btn_update.setText(T("btn_update_selected", count=selected_count))
 
     def clear_scroll(self):
         while self.scroll_layout.count():
@@ -719,12 +782,12 @@ class MainWindow(QMainWindow):
         self.clear_scroll()
         items = self.visible_items()
         if not self.pkgs:
-            self.scroll_layout.addWidget(self._empty_card("No hay actualizaciones disponibles", "Cuando winget encuentre paquetes actualizables aparecerán aquí."))
+            self.scroll_layout.addWidget(self._empty_card(T("empty_no_updates_title"), T("empty_no_updates_body")))
             self.scroll_layout.addStretch(1)
             self.update_summary_ui()
             return
         if not items:
-            self.scroll_layout.addWidget(self._empty_card("No hay resultados para ese filtro", "Prueba otra búsqueda o cambia la vista activa."))
+            self.scroll_layout.addWidget(self._empty_card(T("empty_no_results_title"), T("empty_no_results_body")))
             self.scroll_layout.addStretch(1)
             self.update_summary_ui()
             return
@@ -769,14 +832,14 @@ class MainWindow(QMainWindow):
 
         meta_row = QHBoxLayout()
         meta_row.setSpacing(6)
-        meta = QLabel(f"{pkg['Version']}  →  {pkg['Available']}   ·   {pkg.get('Source', '') or 'origen desconocido'}")
+        meta = QLabel(f"{pkg['Version']}  →  {pkg['Available']}   ·   {pkg.get('Source', '') or T('unknown_source')}")
         meta.setObjectName("pkgMeta")
         meta.setAttribute(Qt.WA_StyledBackground, False)
         meta_row.addWidget(meta)
         if pkg.get("RequiresExplicitTarget"):
-            meta_row.addWidget(self.make_chip("destino explícito"))
+            meta_row.addWidget(self.make_chip(T("chip_explicit")))
         if (pkg.get("Version") or "").strip().lower() in ("unknown", "desconocida", ""):
-            meta_row.addWidget(self.make_chip("versión desconocida", warn=True))
+            meta_row.addWidget(self.make_chip(T("chip_unknown"), warn=True))
         meta_row.addStretch(1)
 
         main.addWidget(name)
@@ -786,10 +849,10 @@ class MainWindow(QMainWindow):
 
         actions = QHBoxLayout()
         actions.setSpacing(6)
-        btn_mark = QPushButton("Marcar")
+        btn_mark = QPushButton(T("btn_mark"))
         btn_mark.setMinimumWidth(72)
         btn_mark.setFixedHeight(34)
-        btn_unmark = QPushButton("Quitar")
+        btn_unmark = QPushButton(T("btn_unmark"))
         btn_unmark.setMinimumWidth(72)
         btn_unmark.setFixedHeight(34)
         btn_mark.clicked.connect(lambda: self.set_one_selected(pkg, True))
@@ -823,20 +886,20 @@ class MainWindow(QMainWindow):
 
     def refresh_list_async(self, initial=False):
         self._set_enabled(False)
-        self.set_status("Obteniendo lista de paquetes..." if initial else "Actualizando listado...")
-        self.append_log("Obteniendo lista de paquetes..." if initial else "Actualizando listado...")
+        self.set_status(T("status_fetching_list") if initial else T("status_refreshing_list"))
+        self.append_log(T("log_fetching_list") if initial else T("log_refreshing_list"))
 
         if not has_winget():
-            if QMessageBox.question(self, "Instalar winget", "Este equipo no tiene winget.\n¿Quieres que intente instalarlo automáticamente (App Installer)?") != QMessageBox.Yes:
-                QMessageBox.critical(self, "Falta winget", "No se pudo instalar/activar winget. Abre la Microsoft Store e instala 'App Installer'.")
+            if QMessageBox.question(self, T("install_winget_title"), T("install_winget_prompt")) != QMessageBox.Yes:
+                QMessageBox.critical(self, T("winget_missing_title"), T("winget_missing_body"))
                 return
             if not try_install_winget(self.append_log):
-                QMessageBox.critical(self, "Falta winget", "No se pudo instalar/activar winget. Abre la Microsoft Store e instala 'App Installer'.")
+                QMessageBox.critical(self, T("winget_missing_title"), T("winget_missing_body"))
                 return
 
         self.loader_thread = LoaderThread(self)
         self.loader_thread.loaded.connect(self.on_loaded)
-        self.loader_thread.failed.connect(lambda msg: QMessageBox.critical(self, "Error", msg))
+        self.loader_thread.failed.connect(lambda msg: QMessageBox.critical(self, T("error_title"), msg))
         self.loader_thread.start()
 
     def on_loaded(self, pkgs):
@@ -845,27 +908,27 @@ class MainWindow(QMainWindow):
             pkg.setdefault("_selected", True)
         self.render_list()
         self._set_enabled(True)
-        self.set_status("Listo")
-        self.append_log("Listado actualizado." if self.pkgs else "Listo.")
+        self.set_status(T("status_ready"))
+        self.append_log(T("log_list_updated") if self.pkgs else T("status_ready"))
 
     def ask_close_retry(self, name, procs_txt):
         return QMessageBox.question(
             self,
-            "Cerrar aplicación y reintentar",
-            f"La actualización de:\n\n{name}\n\nha fallado porque hay archivos en uso.\n\nProcesos detectados:\n{procs_txt}\n\nEsto puede cerrar la aplicación de golpe y perder trabajo no guardado.\n\n¿Quieres cerrar esos procesos y reintentar una vez?",
+            T("retry_close_title"),
+            T("retry_close_prompt", name=name, processes=procs_txt),
         ) == QMessageBox.Yes
 
     def start_update(self):
         selected = [pkg for pkg in self.pkgs if pkg.get("_selected", True)]
         if not selected:
-            QMessageBox.information(self, "Nada seleccionado", "No has seleccionado ningún paquete.")
+            QMessageBox.information(self, T("select_none_title"), T("select_none_body"))
             return
 
         self._set_enabled(False)
         self.btn_cancel.setEnabled(True)
         self.progress.setMaximum(len(selected))
         self.progress.setValue(0)
-        self.set_status(f"Actualizando {len(selected)} paquete(s)...")
+        self.set_status(T("status_updating_count", count=len(selected)))
         self.update_thread = UpdateThread(selected, self.ask_close_retry, self)
         self.update_thread.log.connect(self.append_log)
         self.update_thread.status.connect(self.set_status)
@@ -876,8 +939,8 @@ class MainWindow(QMainWindow):
     def cancel_update(self):
         if self.update_thread:
             self.update_thread.cancel()
-            self.append_log("⛔ Cancelando actualización...")
-            self.set_status("Cancelando actualización...")
+            self.append_log(T("log_cancel_requested"))
+            self.set_status(T("status_cancelling"))
 
     def on_update_finished(self, results):
         updated = [r for r in results if r["status"] in ("updated", "updated_restart_required")]
@@ -893,29 +956,29 @@ class MainWindow(QMainWindow):
         resolved = updated + no_longer_pending + already_installed
 
         summary = [
-            f"Resueltos sin actualización pendiente: {len(resolved)}/{len(results)}",
-            f"Actualizados correctamente: {len(updated)}",
+            T("summary_resolved", resolved=len(resolved), total=len(results)),
+            T("summary_updated", count=len(updated)),
         ]
-        if restart_required: summary.append(f"Requieren reinicio de app: {len(restart_required)}")
-        if already_installed: summary.append(f"Ya estaban en la misma versión o una superior: {len(already_installed)}")
-        if not_applicable: summary.append(f"No aplicables: {len(not_applicable)}")
-        if no_longer_pending: summary.append(f"Ya no pendientes en winget: {len(no_longer_pending)}")
-        if not_found: summary.append(f"No encontrados por winget: {len(not_found)}")
-        if different_install_technology: summary.append(f"Requieren desinstalar e instalar de nuevo: {len(different_install_technology)}")
-        if installer_failed: summary.append(f"Fallos de instalador: {len(installer_failed)}")
-        if failed: summary.append(f"Fallos genéricos: {len(failed)}")
-        if cancelled: summary.append(f"Cancelados: {len(cancelled)}")
+        if restart_required: summary.append(T("summary_restart_required", count=len(restart_required)))
+        if already_installed: summary.append(T("summary_already_installed", count=len(already_installed)))
+        if not_applicable: summary.append(T("summary_not_applicable", count=len(not_applicable)))
+        if no_longer_pending: summary.append(T("summary_no_longer_pending", count=len(no_longer_pending)))
+        if not_found: summary.append(T("summary_not_found", count=len(not_found)))
+        if different_install_technology: summary.append(T("summary_different_tech", count=len(different_install_technology)))
+        if installer_failed: summary.append(T("summary_installer_failed", count=len(installer_failed)))
+        if failed: summary.append(T("summary_failed", count=len(failed)))
+        if cancelled: summary.append(T("summary_cancelled", count=len(cancelled)))
         body = "\n".join(summary)
 
         self.progress.setValue(0)
         self.btn_cancel.setEnabled(False)
         self._set_enabled(True)
-        self.set_status("Proceso finalizado")
+        self.set_status(T("status_finished"))
         self.refresh_list_async(initial=False)
         if installer_failed or failed:
-            QMessageBox.warning(self, "Finalizado con incidencias", body)
+            QMessageBox.warning(self, T("complete_with_issues_title"), body)
         else:
-            QMessageBox.information(self, "Completado", body)
+            QMessageBox.information(self, T("complete_title"), body)
 
 
 def build_gui():
