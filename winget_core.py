@@ -1,6 +1,5 @@
 import re
 import subprocess
-import tkinter as tk
 from process_hints import PROCESS_HINTS
 
 
@@ -397,8 +396,8 @@ def precheck_upgrade(pkg):
 def perform_upgrade_attempt(pkg, text_widget, cancel_flag, set_current_process, use_exact=True):
     def ui_print(msg):
         text_widget.after(0, lambda: (
-            text_widget.insert(tk.END, msg if msg.endswith("\n") else msg + "\n"),
-            text_widget.see(tk.END),
+            text_widget.insert("end", msg if msg.endswith("\n") else msg + "\n"),
+            text_widget.see("end"),
         ))
 
     def ui_replace_last_line(msg):
@@ -406,16 +405,16 @@ def perform_upgrade_attempt(pkg, text_widget, cancel_flag, set_current_process, 
             try:
                 line_count = int(float(text_widget.index("end-1c").split(".")[0]))
                 if line_count < 2:
-                    text_widget.insert(tk.END, msg if msg.endswith("\n") else msg + "\n")
+                    text_widget.insert("end", msg if msg.endswith("\n") else msg + "\n")
                 else:
                     start = text_widget.index("end-2l linestart")
                     end = text_widget.index("end-1c")
                     text_widget.delete(start, end)
                     text_widget.insert(start, msg if msg.endswith("\n") else msg + "\n")
-                text_widget.see(tk.END)
+                text_widget.see("end")
             except Exception:
-                text_widget.insert(tk.END, msg if msg.endswith("\n") else msg + "\n")
-                text_widget.see(tk.END)
+                text_widget.insert("end", msg if msg.endswith("\n") else msg + "\n")
+                text_widget.see("end")
         text_widget.after(0, _do)
 
     def is_boring_status_line(line: str) -> bool:
