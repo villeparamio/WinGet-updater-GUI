@@ -8,8 +8,8 @@ import webbrowser
 import subprocess
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QThread, Signal, QObject
-from PySide6.QtGui import QAction, QIcon, QTextCursor
+from PySide6.QtCore import Qt, QThread, Signal
+from PySide6.QtGui import QIcon, QTextCursor
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -17,7 +17,6 @@ from PySide6.QtWidgets import (
     QDialog,
     QFileDialog,
     QFrame,
-    QGridLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -43,7 +42,7 @@ from winget_core import (
     kill_processes,
 )
 
-APP_VERSION = "v1.2"
+APP_VERSION = "v1.3"
 I18N_OBJ = I18N(Path(__file__).resolve().parent)
 T = I18N_OBJ.t
 
@@ -53,121 +52,232 @@ LANGUAGE_NAMES = {
     "en": lambda: T("lang_en"),
 }
 
+
 SOLARIZED_DARK_QSS = """
-QMainWindow, QWidget#central {
-    background: #002b36;
+/*
+    Solarized Dark palette
+    ----------------------
+    base03  #002b36   app background
+    base02  #073642   surface / cards
+    base01  #586e75   borders, disabled text
+    base00  #657b83
+    base0   #839496   body text
+    base1   #b8c4c4   secondary text (bumped from #93a1a1 for contrast)
+    base2   #eee8d5   primary text
+    yellow  #b58900   explicit target
+    orange  #cb4b16   warning
+    red     #dc322f   danger / cancel
+    blue    #268bd2   selection
+    cyan    #2aa198   primary action / progress
+    green   #859900   success
+*/
+
+QMainWindow, QDialog {
+    background-color: #002b36;
+}
+QWidget#central {
+    background-color: #002b36;
+}
+
+QLabel, QCheckBox {
     color: #eee8d5;
+    background: transparent;
     font-family: 'Segoe UI';
     font-size: 10pt;
 }
-QWidget {
-    color: #eee8d5;
-    font-family: 'Segoe UI';
-    font-size: 10pt;
-}
-QLabel {
-    background: transparent;
-    border: none;
-}
-QFrame#surface, QScrollArea, QWidget#scrollContent {
-    background: #073642;
-    border: 1px solid #4f676e;
-    border-radius: 10px;
-}
-QFrame#card {
-    background: #073642;
-    border: 1px solid #4f676e;
-    border-radius: 10px;
-}
-QFrame#stat {
-    background: #0b3c49;
-    border: 1px solid #4f676e;
-    border-radius: 10px;
-}
-QFrame#card QLabel, QFrame#stat QLabel, QFrame#surface QLabel, QWidget#scrollContent QLabel {
-    background: transparent;
-    border: none;
-}
+
 QLabel#hero {
     color: #eee8d5;
-    font-size: 24pt;
+    font-size: 22pt;
     font-weight: 700;
 }
-QLabel#subtitle, QLabel#muted, QLabel#pkgMeta, QLabel#pkgId {
-    color: #93a1a1;
+QLabel#subtitle {
+    color: #b8c4c4;
+    font-size: 10pt;
 }
-QLabel#headline {
+QLabel#muted, QLabel#pkgMeta, QLabel#pkgId, QLabel#footerStatus, QLabel#logLabel {
+    color: #b8c4c4;
+}
+QLabel#pkgName {
     color: #eee8d5;
-    font-size: 18pt;
     font-weight: 600;
+    font-size: 11pt;
 }
 QLabel#statValue {
     color: #eee8d5;
-    font-size: 18pt;
+    font-size: 22pt;
     font-weight: 700;
 }
 QLabel#statLabel {
-    color: #93a1a1;
+    color: #b8c4c4;
     font-size: 9pt;
 }
+QLabel#chip {
+    background-color: #0b3c49;
+    color: #b8c4c4;
+    border: 1px solid #1e566a;
+    border-radius: 6px;
+    padding: 2px 8px;
+    font-size: 9pt;
+}
+QLabel#chipExplicit {
+    background-color: #3a2600;
+    color: #f0c050;
+    border: 1px solid #6b4500;
+    border-radius: 6px;
+    padding: 2px 8px;
+    font-size: 9pt;
+    font-weight: 600;
+}
+QLabel#chipWarn {
+    background-color: #3d1f00;
+    color: #f5a05a;
+    border: 1px solid #7a3e00;
+    border-radius: 6px;
+    padding: 2px 8px;
+    font-size: 9pt;
+}
+QLabel#dialogIconWarn {
+    color: #cb4b16;
+    font-size: 30pt;
+    background: transparent;
+}
+QLabel#dialogIconInfo {
+    color: #2aa198;
+    font-size: 30pt;
+    background: transparent;
+}
+
+QFrame#surface {
+    background-color: #073642;
+    border: 1px solid #0e4553;
+    border-radius: 10px;
+}
+QFrame#logPanel {
+    background-color: #073642;
+    border: 1px solid #0e4553;
+    border-radius: 10px;
+}
+QFrame#stat {
+    background-color: #073642;
+    border: 1px solid #0e4553;
+    border-radius: 10px;
+}
+
+QFrame#card {
+    background-color: #073642;
+    border: 1px solid #0e4553;
+    border-left: 3px solid #586e75;
+    border-radius: 8px;
+}
+QFrame#card:hover {
+    background-color: #0a3e4b;
+    border-color: #19546a;
+}
+QFrame#card[cardState="selected"] {
+    border-left: 3px solid #2aa198;
+}
+QFrame#card[cardState="muted"] {
+    border-left: 3px solid #586e75;
+}
+QFrame#card[cardState="explicit"] {
+    border-left: 3px solid #b58900;
+}
+
 QPushButton {
-    background: #0a3a46;
+    background-color: #0a3a46;
     color: #eee8d5;
     border: 1px solid #4f676e;
     border-radius: 8px;
-    padding: 7px 12px;
+    padding: 7px 14px;
+    font-family: 'Segoe UI';
+    font-size: 10pt;
 }
 QPushButton:hover {
-    background: #104553;
+    background-color: #104553;
     border-color: #657b83;
 }
 QPushButton:pressed {
-    background: #08303b;
-    border-color: #839496;
+    background-color: #08303b;
 }
 QPushButton:disabled {
-    background: #23424a;
-    color: #657b83;
-    border-color: #3d5961;
+    background-color: #0b333b;
+    color: #586e75;
+    border-color: #2d4a52;
 }
+
 QPushButton#primaryButton {
-    background: #2aa198;
+    background-color: #2aa198;
     color: #002b36;
     border: 1px solid #2aa198;
     font-weight: 700;
 }
 QPushButton#primaryButton:hover {
-    background: #35b8ae;
+    background-color: #36b8ae;
+    border-color: #36b8ae;
 }
+QPushButton#primaryButton:pressed {
+    background-color: #1e8a82;
+    border-color: #1e8a82;
+}
+QPushButton#primaryButton:disabled {
+    background-color: #1e5f5b;
+    color: #5a8984;
+    border-color: #1e5f5b;
+}
+
 QPushButton#dangerButton {
     background-color: #dc322f;
     color: #fdf6e3;
     border: 1px solid #dc322f;
+    font-weight: 600;
 }
 QPushButton#dangerButton:hover {
     background-color: #e45451;
+    border-color: #e45451;
 }
 QPushButton#dangerButton:pressed {
     background-color: #b92c2a;
 }
 QPushButton#dangerButton:disabled {
-    background-color: #8b3a3a;
-    color: #f3d9d6;
-    border: 1px solid #a24a4a;
+    background-color: #4a1f1e;
+    color: #8a5a59;
+    border-color: #4a1f1e;
 }
-QLineEdit, QComboBox, QTextEdit {
-    background: #073642;
+
+QPushButton#chipButton {
+    background-color: #0b3c49;
+    color: #b8c4c4;
+    border: 1px solid #1e566a;
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-size: 9pt;
+}
+QPushButton#chipButton:hover {
+    background-color: #104553;
+    color: #eee8d5;
+    border-color: #2f6b7e;
+}
+
+QLineEdit, QComboBox {
+    background-color: #002b36;
     color: #eee8d5;
     selection-background-color: #268bd2;
     selection-color: #fdf6e3;
-    padding: 8px 10px;
-    border: 1px solid #586e75;
-    border-radius: 10px;
+    padding: 7px 10px;
+    border: 1px solid #4f676e;
+    border-radius: 8px;
+    font-family: 'Segoe UI';
+    font-size: 10pt;
 }
+QLineEdit:focus, QComboBox:focus {
+    border-color: #2aa198;
+}
+
 QComboBox::drop-down {
     subcontrol-origin: padding;
-    subcontrol-position: top right;
-    width: 26px;
+    subcontrol-position: center right;
+    width: 22px;
     border: none;
     background: transparent;
 }
@@ -175,69 +285,104 @@ QComboBox::down-arrow {
     image: none;
     width: 0px;
     height: 0px;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 6px solid #93a1a1;
+    margin-right: 10px;
 }
 QComboBox QAbstractItemView {
-    background: #073642;
+    background-color: #073642;
     color: #eee8d5;
     selection-background-color: #268bd2;
-    border: 1px solid #586e75;
-}
-QScrollArea {
+    selection-color: #fdf6e3;
     border: 1px solid #4f676e;
+    padding: 4px;
+    outline: 0;
+}
+
+QScrollArea {
+    background-color: #041e26;
+    border: 1px solid #0e4553;
     border-radius: 10px;
 }
-QScrollArea > QWidget > QWidget {
-    background: #073642;
+QWidget#scrollContent {
+    background-color: #041e26;
 }
 QScrollBar:vertical {
-    background: #073642;
+    background: transparent;
     width: 12px;
-    margin: 8px 2px 8px 2px;
+    margin: 6px 2px 6px 2px;
     border: none;
 }
 QScrollBar::handle:vertical {
     background: #33545c;
-    min-height: 28px;
-    border-radius: 6px;
+    min-height: 32px;
+    border-radius: 5px;
 }
 QScrollBar::handle:vertical:hover {
-    background: #41666f;
+    background: #456770;
 }
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical,
 QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
-    background: none;
+    background: transparent;
     border: none;
     height: 0px;
+    width: 0px;
 }
+
 QProgressBar {
-    border: 1px solid #586e75;
-    border-radius: 8px;
-    background-color: #204851;
+    background-color: #0b3c49;
+    border: 1px solid #4f676e;
+    border-radius: 10px;
     text-align: center;
     color: #eee8d5;
-    min-height: 18px;
+    font-weight: 600;
+    min-height: 22px;
 }
 QProgressBar::chunk {
     background-color: #2aa198;
-    border-radius: 7px;
+    border-radius: 9px;
 }
+
 QCheckBox {
     spacing: 8px;
-    background: transparent;
 }
 QCheckBox::indicator {
     width: 18px;
     height: 18px;
+    border-radius: 4px;
 }
 QCheckBox::indicator:unchecked {
-    border: 1px solid #657b83;
-    background: #002b36;
-    border-radius: 4px;
+    border: 1.5px solid #657b83;
+    background-color: #002b36;
+}
+QCheckBox::indicator:unchecked:hover {
+    border-color: #93a1a1;
 }
 QCheckBox::indicator:checked {
-    border: 1px solid #2aa198;
-    background: #2aa198;
-    border-radius: 4px;
+    border: 1.5px solid #2aa198;
+    background-color: #2aa198;
+}
+
+QTextEdit#logView {
+    background-color: #001e26;
+    color: #b8c4c4;
+    border: 1px solid #0e4553;
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-family: 'Cascadia Mono', 'Consolas', 'Courier New', monospace;
+    font-size: 9.5pt;
+    selection-background-color: #268bd2;
+    selection-color: #fdf6e3;
+}
+
+QMessageBox {
+    background-color: #002b36;
+    color: #eee8d5;
+}
+QMessageBox QLabel {
+    color: #eee8d5;
+    background: transparent;
 }
 """
 
@@ -312,37 +457,6 @@ def try_install_winget(log_fn=None):
     return ok
 
 
-class ThreadSafeLogAdapter:
-    def __init__(self, emit_log):
-        self.emit_log = emit_log
-        self.lines = []
-
-    def after(self, _delay, callback):
-        callback()
-
-    def insert(self, _index, text):
-        clean = text if text.endswith("\n") else text + "\n"
-        parts = clean.splitlines()
-        if parts:
-            self.lines.extend(parts)
-        self.emit_log(clean.rstrip("\n"))
-
-    def see(self, _index):
-        return
-
-    def index(self, spec):
-        blocks = max(len(self.lines), 1)
-        if spec == "end-1c":
-            return f"{blocks}.0"
-        if spec == "end-2l linestart":
-            return f"{max(blocks - 1, 1)}.0"
-        return f"{blocks}.0"
-
-    def delete(self, _start, _end):
-        if self.lines:
-            self.lines = self.lines[:-1]
-
-
 class ClickableFrame(QFrame):
     clicked = Signal()
 
@@ -372,16 +486,18 @@ class LoaderThread(QThread):
 class UpdateThread(QThread):
     package_done = Signal(dict)
     finished_summary = Signal(list)
-    log = Signal(str)
+    log_line = Signal(str)
+    log_progress = Signal(str)
     status = Signal(str)
+    close_retry_requested = Signal(str, str)
 
-    def __init__(self, selected, ask_close_retry, parent=None):
+    def __init__(self, selected, parent=None):
         super().__init__(parent)
         self.selected = selected
-        self.ask_close_retry = ask_close_retry
         self.cancelled = False
         self.current_process = None
-        self.text_adapter = None
+        self._close_retry_event = threading.Event()
+        self._close_retry_answer = False
 
     def cancel(self):
         self.cancelled = True
@@ -391,61 +507,85 @@ class UpdateThread(QThread):
         except Exception:
             pass
 
+    def provide_close_retry_answer(self, answer):
+        self._close_retry_answer = bool(answer)
+        self._close_retry_event.set()
+
+    def _ask_close_retry_blocking(self, name, procs_txt):
+        self._close_retry_event.clear()
+        self._close_retry_answer = False
+        self.close_retry_requested.emit(name, procs_txt)
+        self._close_retry_event.wait()
+        return self._close_retry_answer
+
+    def _set_current_process(self, proc):
+        self.current_process = proc
+
+    def _is_cancelled(self):
+        return self.cancelled
+
+    def _run_upgrade(self, pkg, use_exact=True):
+        return perform_upgrade_attempt(
+            pkg,
+            self.log_line.emit,
+            self.log_progress.emit,
+            self._is_cancelled,
+            self._set_current_process,
+            use_exact=use_exact,
+        )
+
     def run(self):
-        self.text_adapter = ThreadSafeLogAdapter(self.log.emit)
         results = []
-
-        def set_current_process(proc):
-            self.current_process = proc
-
         total = len(self.selected)
+
         for idx, pkg in enumerate(self.selected, start=1):
             if self.cancelled:
-                self.log.emit(T("log_operation_cancelled"))
+                self.log_line.emit(T("log_operation_cancelled"))
                 break
 
             self.status.emit(T("status_updating_item", index=idx, total=total, name=pkg["Name"]))
-            self.log.emit(T("log_update_item", index=idx, total=total, name=pkg["Name"], version=pkg["Version"], available=pkg["Available"], id=pkg["Id"]))
+            self.log_line.emit(T("log_update_item",
+                                 index=idx, total=total, name=pkg["Name"],
+                                 version=pkg["Version"], available=pkg["Available"], id=pkg["Id"]))
 
             running = get_running_process_hints(pkg["Id"])
             if running:
-                self.log.emit(T("log_blocking_processes", processes=", ".join(running)))
+                self.log_line.emit(T("log_blocking_processes", processes=", ".join(running)))
 
             can_upgrade, pre_status, pre_output = precheck_upgrade(pkg)
-            if not can_upgrade:
-                if pre_status in ("no_longer_pending", "not_applicable", "not_found"):
-                    mapping = {
-                        "no_longer_pending": (T("log_skip_no_longer_pending"), T("reason_no_longer_pending")),
-                        "not_applicable": (T("log_skip_not_applicable"), T("reason_not_applicable")),
-                        "not_found": (T("log_skip_not_found"), T("reason_not_found")),
-                    }
-                    msg, reason = mapping[pre_status]
-                    self.log.emit(msg)
-                    result = {"status": pre_status, "pkg": pkg, "log": None, "reason": reason, "returncode": 0, "raw_output": pre_output}
-                    results.append(result)
-                    self.package_done.emit(result)
-                    continue
+            if not can_upgrade and pre_status in ("no_longer_pending", "not_applicable", "not_found"):
+                mapping = {
+                    "no_longer_pending": (T("log_skip_no_longer_pending"), T("reason_no_longer_pending")),
+                    "not_applicable": (T("log_skip_not_applicable"), T("reason_not_applicable")),
+                    "not_found": (T("log_skip_not_found"), T("reason_not_found")),
+                }
+                msg, reason = mapping[pre_status]
+                self.log_line.emit(msg)
+                result = {
+                    "status": pre_status, "pkg": pkg, "log": None,
+                    "reason": reason, "returncode": 0, "raw_output": pre_output,
+                }
+                results.append(result)
+                self.package_done.emit(result)
+                continue
 
-            result = perform_upgrade_attempt(pkg, self.text_adapter, type("CancelFlag", (), {"get": lambda _self: self.cancelled})(), set_current_process, use_exact=True)
+            result = self._run_upgrade(pkg, use_exact=True)
 
-            if result["status"] == "updated":
-                self.log.emit(T("log_updated"))
-            elif result["status"] == "updated_restart_required":
-                self.log.emit(T("log_updated_restart_required"))
-            elif result["status"] == "no_longer_pending":
-                self.log.emit(T("log_resolved_no_longer_pending"))
-            elif result["status"] == "already_installed":
-                self.log.emit(T("log_resolved_already_installed"))
-            elif result["status"] == "different_install_technology":
-                self.log.emit(T("log_resolved_different_tech"))
+            status_msgs = {
+                "updated": T("log_updated"),
+                "updated_restart_required": T("log_updated_restart_required"),
+                "no_longer_pending": T("log_resolved_no_longer_pending"),
+                "already_installed": T("log_resolved_already_installed"),
+                "different_install_technology": T("log_resolved_different_tech"),
+            }
+            if result["status"] in status_msgs:
+                self.log_line.emit(status_msgs[result["status"]])
 
-            if (
-                not pkg.get("RequiresExplicitTarget")
-                and result["status"] in ("not_applicable", "not_found", "no_longer_pending")
-                and should_retry_without_exact(result)
-            ):
-                self.log.emit(T("log_retry_without_exact"))
-                retry_no_exact = perform_upgrade_attempt(pkg, self.text_adapter, type("CancelFlag", (), {"get": lambda _self: self.cancelled})(), set_current_process, use_exact=False)
+            if (not pkg.get("RequiresExplicitTarget")
+                    and result["status"] in ("not_applicable", "not_found", "no_longer_pending")
+                    and should_retry_without_exact(result)):
+                self.log_line.emit(T("log_retry_without_exact"))
+                retry_no_exact = self._run_upgrade(pkg, use_exact=False)
                 if retry_no_exact["status"] != "cancelled":
                     retry_no_exact["raw_output"] = (
                         "===== FIRST ATTEMPT (--exact) =====\n"
@@ -456,7 +596,7 @@ class UpdateThread(QThread):
                     result = retry_no_exact
 
             if result["status"] == "cancelled":
-                self.log.emit(T("log_cancelled"))
+                self.log_line.emit(T("log_cancelled"))
                 results.append(result)
                 self.package_done.emit(result)
                 self.finished_summary.emit(results)
@@ -465,13 +605,16 @@ class UpdateThread(QThread):
             running_after_fail = get_running_process_hints(pkg["Id"])
             if should_offer_close_retry(result, running_after_fail):
                 procs_txt = ", ".join(running_after_fail)
-                if self.ask_close_retry(pkg["Name"], procs_txt):
-                    self.log.emit(T("log_closing_processes", processes=procs_txt))
+                if self._ask_close_retry_blocking(pkg["Name"], procs_txt):
+                    self.log_line.emit(T("log_closing_processes", processes=procs_txt))
                     for kr in kill_processes(running_after_fail):
-                        self.log.emit(T("log_process_closed", process=kr["process"]) if kr["ok"] else T("log_process_not_closed", process=kr["process"]))
+                        self.log_line.emit(
+                            T("log_process_closed", process=kr["process"]) if kr["ok"]
+                            else T("log_process_not_closed", process=kr["process"])
+                        )
                     time.sleep(1.5)
-                    self.log.emit(T("log_retry_once"))
-                    retry_result = perform_upgrade_attempt(pkg, self.text_adapter, type("CancelFlag", (), {"get": lambda _self: self.cancelled})(), set_current_process)
+                    self.log_line.emit(T("log_retry_once"))
+                    retry_result = self._run_upgrade(pkg, use_exact=True)
                     if retry_result["status"] != "cancelled":
                         retry_result["raw_output"] = (
                             "===== FIRST ATTEMPT =====\n"
@@ -492,11 +635,12 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle(T("app_title", version=APP_VERSION))
         self.resize(1280, 900)
-        self.setMinimumSize(1040, 720)
+        self.setMinimumSize(1040, 760)
         self.pkgs = []
         self.loader_thread = None
         self.update_thread = None
         self.current_lang = I18N_OBJ.lang
+        self._last_was_progress = False
         self._build_ui()
         self.refresh_list_async(initial=True)
 
@@ -507,78 +651,76 @@ class MainWindow(QMainWindow):
         root.setContentsMargins(18, 18, 18, 18)
         root.setSpacing(12)
 
+        # --- Header ---
         header = QHBoxLayout()
-        left = QVBoxLayout()
+        header.setSpacing(16)
+
+        title_box = QVBoxLayout()
+        title_box.setSpacing(2)
         hero = QLabel(T("app_name"))
         hero.setObjectName("hero")
-        hero.setAttribute(Qt.WA_StyledBackground, False)
         self.subtitle = QLabel(T("subtitle_detected"))
         self.subtitle.setObjectName("subtitle")
-        self.subtitle.setAttribute(Qt.WA_StyledBackground, False)
-        left.addWidget(hero)
-        left.addWidget(self.subtitle)
-        header.addLayout(left, 1)
+        title_box.addWidget(hero)
+        title_box.addWidget(self.subtitle)
+        header.addLayout(title_box, 1)
 
-        actions = QHBoxLayout()
-        actions.setSpacing(10)
         self.btn_refresh = QPushButton(T("btn_refresh"))
-        self.btn_refresh.setMinimumWidth(108)
+        self.btn_refresh.setMinimumWidth(110)
         self.btn_save = QPushButton(T("btn_save_log"))
-        self.btn_save.setMinimumWidth(122)
-        self.btn_toggle_log = QPushButton(T("btn_show_log"))
-        self.btn_toggle_log.setMinimumWidth(122)
+        self.btn_save.setMinimumWidth(120)
         self.btn_update = QPushButton(T("btn_update_selected", count=0))
         self.btn_update.setObjectName("primaryButton")
-        self.btn_update.setMinimumWidth(238)
-        actions.addWidget(self.btn_refresh)
-        actions.addWidget(self.btn_save)
-        actions.addWidget(self.btn_toggle_log)
-        actions.addWidget(self.btn_update)
-        header.addLayout(actions)
+        self.btn_update.setMinimumWidth(230)
+        header.addWidget(self.btn_refresh, 0, Qt.AlignVCenter)
+        header.addWidget(self.btn_save, 0, Qt.AlignVCenter)
+        header.addWidget(self.btn_update, 0, Qt.AlignVCenter)
         root.addLayout(header)
 
-        stats = QGridLayout()
+        # --- Stats ---
+        stats = QHBoxLayout()
+        stats.setSpacing(10)
         self.stat_total = self._make_stat("0", T("stats_available"))
         self.stat_selected = self._make_stat("0", T("stats_selected"))
         self.stat_special = self._make_stat("0", T("stats_special"))
-        stats.addWidget(self.stat_total[0], 0, 0)
-        stats.addWidget(self.stat_selected[0], 0, 1)
-        stats.addWidget(self.stat_special[0], 0, 2)
+        stats.addWidget(self.stat_total[0], 1)
+        stats.addWidget(self.stat_selected[0], 1)
+        stats.addWidget(self.stat_special[0], 1)
         root.addLayout(stats)
 
+        # --- Toolbar ---
         toolbar_frame = QFrame(objectName="surface")
         toolbar = QHBoxLayout(toolbar_frame)
         toolbar.setContentsMargins(12, 10, 12, 10)
         toolbar.setSpacing(10)
-        toolbar.addWidget(QLabel(T("label_search")))
+
         self.search = QLineEdit()
         self.search.setPlaceholderText(T("search_placeholder"))
-        self.search.setMinimumWidth(360)
+        self.search.setMinimumWidth(280)
         toolbar.addWidget(self.search, 1)
+
         self.lbl_view = QLabel(T("label_view"))
+        self.lbl_view.setObjectName("muted")
         toolbar.addWidget(self.lbl_view)
         self.filter_combo = QComboBox()
         self.filter_combo.addItems([T("filter_all"), T("filter_selected"), T("filter_explicit"), T("filter_unknown")])
-        self.filter_combo.setMinimumWidth(132)
+        self.filter_combo.setMinimumWidth(130)
         toolbar.addWidget(self.filter_combo)
+
         self.lbl_language = QLabel(T("label_language"))
+        self.lbl_language.setObjectName("muted")
         toolbar.addWidget(self.lbl_language)
         self.lang_combo = QComboBox()
-        self.lang_combo.setMinimumWidth(132)
+        self.lang_combo.setMinimumWidth(120)
         toolbar.addWidget(self.lang_combo)
+
         self.btn_all = QPushButton(T("btn_select_all"))
-        self.btn_all.setMinimumWidth(140)
         self.btn_none = QPushButton(T("btn_select_none"))
-        self.btn_none.setMinimumWidth(140)
         toolbar.addWidget(self.btn_all)
         toolbar.addWidget(self.btn_none)
         root.addWidget(toolbar_frame)
 
-        self.headline = QLabel(T("headline_loading"))
-        self.headline.setObjectName("headline")
-        self.headline.setAttribute(Qt.WA_StyledBackground, False)
-        root.addWidget(self.headline)
-
+        # --- Package list ---
         self.scroll_area = QScrollArea()
         self.scroll_area.setWidgetResizable(True)
         self.scroll_content = QWidget(objectName="scrollContent")
@@ -586,60 +728,46 @@ class MainWindow(QMainWindow):
         self.scroll_layout.setContentsMargins(10, 10, 10, 10)
         self.scroll_layout.setSpacing(8)
         self.scroll_area.setWidget(self.scroll_content)
-        root.addWidget(self.scroll_area, 1)
+        root.addWidget(self.scroll_area, 3)
 
-        footer_frame = QFrame()
-        footer_frame.setStyleSheet("background: transparent; border: none;")
-        footer_grid = QGridLayout(footer_frame)
-        footer_grid.setContentsMargins(0, 0, 0, 0)
-        footer_grid.setHorizontalSpacing(14)
-        footer_grid.setVerticalSpacing(6)
-
+        # --- Progress row ---
+        progress_row = QHBoxLayout()
+        progress_row.setSpacing(12)
         self.progress = QProgressBar()
         self.progress.setValue(0)
-        self.progress.setTextVisible(False)
-        self.progress.setFixedHeight(18)
-        self.progress.setStyleSheet(
-            "QProgressBar { background-color:#204851; border:1px solid #586e75; border-radius:8px; }"
-            "QProgressBar::chunk { background-color:#2aa198; border-radius:7px; }"
-        )
-        footer_grid.addWidget(self.progress, 0, 0)
+        self.progress.setTextVisible(True)
+        self.progress.setFormat("%v / %m")
+        progress_row.addWidget(self.progress, 1)
 
         self.btn_cancel = QPushButton(T("btn_cancel_update"))
         self.btn_cancel.setObjectName("dangerButton")
         self.btn_cancel.setEnabled(False)
-        self.btn_cancel.setMinimumWidth(190)
-        self.btn_cancel.setFixedHeight(42)
-        self.btn_cancel.setStyleSheet(
-            "QPushButton { background-color:#dc322f; color:#fdf6e3; border:1px solid #dc322f; border-radius:8px; padding:7px 12px; }"
-            "QPushButton:hover { background-color:#e45451; }"
-            "QPushButton:pressed { background-color:#b92c2a; }"
-            "QPushButton:disabled { background-color:#8b3a3a; color:#f3d9d6; border:1px solid #a24a4a; }"
-        )
-        footer_grid.addWidget(self.btn_cancel, 0, 1, alignment=Qt.AlignVCenter)
+        self.btn_cancel.setMinimumWidth(180)
+        progress_row.addWidget(self.btn_cancel)
+        root.addLayout(progress_row)
 
         self.footer_status = QLabel(T("status_ready"))
-        self.footer_status.setObjectName("muted")
-        self.footer_status.setAttribute(Qt.WA_StyledBackground, False)
-        footer_grid.addWidget(self.footer_status, 1, 0, 1, 2)
-        footer_grid.setColumnStretch(0, 1)
-        footer_grid.setColumnStretch(1, 0)
-        root.addWidget(footer_frame)
+        self.footer_status.setObjectName("footerStatus")
+        root.addWidget(self.footer_status)
 
-        self.log_panel = QFrame(objectName="surface")
-        log_layout = QVBoxLayout(self.log_panel)
-        log_layout.setContentsMargins(12, 12, 12, 12)
-        log_layout.addWidget(QLabel(T("log_title")))
+        # --- Log (always visible) ---
+        log_frame = QFrame(objectName="logPanel")
+        log_layout = QVBoxLayout(log_frame)
+        log_layout.setContentsMargins(12, 10, 12, 12)
+        log_layout.setSpacing(6)
+        log_title = QLabel(T("log_title"))
+        log_title.setObjectName("logLabel")
+        log_layout.addWidget(log_title)
         self.text_log = QTextEdit()
+        self.text_log.setObjectName("logView")
         self.text_log.setReadOnly(True)
-        self.text_log.setMinimumHeight(180)
+        self.text_log.setMinimumHeight(170)
         log_layout.addWidget(self.text_log)
-        self.log_panel.hide()
-        root.addWidget(self.log_panel)
+        root.addWidget(log_frame, 2)
 
+        # --- Connections ---
         self.btn_refresh.clicked.connect(lambda: self.refresh_list_async(initial=False))
         self.btn_save.clicked.connect(self.save_log)
-        self.btn_toggle_log.clicked.connect(self.toggle_log)
         self.btn_update.clicked.connect(self.start_update)
         self.btn_cancel.clicked.connect(self.cancel_update)
         self.btn_all.clicked.connect(lambda: self.set_all_selected(True))
@@ -650,7 +778,6 @@ class MainWindow(QMainWindow):
 
         self._set_enabled(False)
         self.append_log(T("log_initializing"))
-
         self.populate_language_combo()
 
         icon_path = Path(__file__).with_name("winget_updater.ico")
@@ -660,14 +787,12 @@ class MainWindow(QMainWindow):
     def _make_stat(self, value, label):
         frame = QFrame(objectName="stat")
         layout = QVBoxLayout(frame)
-        layout.setContentsMargins(14, 10, 14, 10)
+        layout.setContentsMargins(16, 12, 16, 12)
         layout.setSpacing(2)
         v = QLabel(value)
         v.setObjectName("statValue")
-        v.setAttribute(Qt.WA_StyledBackground, False)
         t = QLabel(label)
         t.setObjectName("statLabel")
-        t.setAttribute(Qt.WA_StyledBackground, False)
         layout.addWidget(v)
         layout.addWidget(t)
         return frame, v, t
@@ -684,17 +809,27 @@ class MainWindow(QMainWindow):
         self.lang_combo.blockSignals(False)
 
     def append_log(self, msg):
-        self.text_log.moveCursor(QTextCursor.End)
-        self.text_log.insertPlainText(msg if msg.endswith("\n") else msg + "\n")
-        self.text_log.moveCursor(QTextCursor.End)
+        self._last_was_progress = False
+        cursor = self.text_log.textCursor()
+        cursor.movePosition(QTextCursor.End)
+        cursor.insertText(msg if msg.endswith("\n") else msg + "\n")
+        self.text_log.setTextCursor(cursor)
+        self.text_log.ensureCursorVisible()
+
+    def replace_progress(self, msg):
+        cursor = self.text_log.textCursor()
+        cursor.movePosition(QTextCursor.End)
+        if self._last_was_progress:
+            cursor.deletePreviousChar()
+            cursor.movePosition(QTextCursor.StartOfLine, QTextCursor.KeepAnchor)
+            cursor.removeSelectedText()
+        cursor.insertText(msg + "\n")
+        self._last_was_progress = True
+        self.text_log.setTextCursor(cursor)
+        self.text_log.ensureCursorVisible()
 
     def set_status(self, msg):
         self.footer_status.setText(msg)
-
-    def toggle_log(self):
-        visible = not self.log_panel.isVisible()
-        self.log_panel.setVisible(visible)
-        self.btn_toggle_log.setText(T("btn_hide_log") if visible else T("btn_show_log"))
 
     def change_language(self):
         code = self.lang_combo.currentData()
@@ -706,10 +841,8 @@ class MainWindow(QMainWindow):
 
     def retranslate_ui(self):
         self.setWindowTitle(T("app_title", version=APP_VERSION))
-        self.subtitle.setText(T("subtitle_detected") if self.pkgs else T("subtitle_up_to_date"))
         self.btn_refresh.setText(T("btn_refresh"))
         self.btn_save.setText(T("btn_save_log"))
-        self.btn_toggle_log.setText(T("btn_hide_log") if self.log_panel.isVisible() else T("btn_show_log"))
         self.btn_cancel.setText(T("btn_cancel_update"))
         self.btn_all.setText(T("btn_select_all"))
         self.btn_none.setText(T("btn_select_none"))
@@ -737,7 +870,8 @@ class MainWindow(QMainWindow):
         QMessageBox.information(self, T("saved_title"), T("saved_message", path=path))
 
     def _set_enabled(self, enabled):
-        for widget in (self.btn_refresh, self.btn_save, self.btn_update, self.btn_all, self.btn_none, self.search, self.filter_combo):
+        for widget in (self.btn_refresh, self.btn_save, self.btn_update,
+                       self.btn_all, self.btn_none, self.search, self.filter_combo):
             widget.setEnabled(enabled)
 
     def visible_items(self):
@@ -745,7 +879,9 @@ class MainWindow(QMainWindow):
         mode = self.filter_combo.currentText().strip().lower() or "all"
         items = []
         for pkg in self.pkgs:
-            haystack = " ".join([pkg.get("Name", ""), pkg.get("Id", ""), pkg.get("Version", ""), pkg.get("Available", ""), pkg.get("Source", "")]).lower()
+            haystack = " ".join([pkg.get("Name", ""), pkg.get("Id", ""),
+                                 pkg.get("Version", ""), pkg.get("Available", ""),
+                                 pkg.get("Source", "")]).lower()
             if q and q not in haystack:
                 continue
             if mode == "selected" and not pkg.get("_selected", True):
@@ -765,8 +901,10 @@ class MainWindow(QMainWindow):
         self.stat_selected[1].setText(str(selected_count))
         self.stat_special[1].setText(str(explicit_count + unknown_count))
         visible_count = len(self.visible_items())
-        self.headline.setText(T("headline_visible_detected", visible=visible_count, total=len(self.pkgs)) if self.pkgs else T("headline_none"))
-        self.subtitle.setText(T("subtitle_detected") if self.pkgs else T("subtitle_up_to_date"))
+        if self.pkgs:
+            self.subtitle.setText(T("headline_visible_detected", visible=visible_count, total=len(self.pkgs)))
+        else:
+            self.subtitle.setText(T("subtitle_up_to_date"))
         self.btn_update.setText(T("btn_update_selected", count=selected_count))
 
     def clear_scroll(self):
@@ -776,12 +914,9 @@ class MainWindow(QMainWindow):
             if widget:
                 widget.deleteLater()
 
-    def make_chip(self, text, warn=False):
+    def make_chip(self, text, object_name="chip"):
         label = QLabel(text)
-        if warn:
-            label.setStyleSheet("background:#5b4600;color:#fdf6e3;border-radius:8px;padding:2px 7px;font-size:8.5pt;")
-        else:
-            label.setStyleSheet("background:#09414f;color:#93a1a1;border-radius:8px;padding:2px 7px;font-size:8.5pt;")
+        label.setObjectName(object_name)
         return label
 
     def render_list(self):
@@ -804,80 +939,90 @@ class MainWindow(QMainWindow):
         self.update_summary_ui()
 
     def _empty_card(self, title, subtitle):
-        card = QFrame(objectName="card")
+        card = QFrame(objectName="surface")
         layout = QVBoxLayout(card)
-        layout.setContentsMargins(16, 14, 16, 14)
+        layout.setContentsMargins(18, 16, 18, 16)
+        layout.setSpacing(4)
         t = QLabel(title)
-        t.setStyleSheet("font-weight:600;color:#eee8d5;")
+        t.setObjectName("pkgName")
         s = QLabel(subtitle)
         s.setObjectName("muted")
         layout.addWidget(t)
         layout.addWidget(s)
         return card
 
+    def _card_state(self, pkg):
+        if pkg.get("RequiresExplicitTarget"):
+            return "explicit"
+        if pkg.get("_selected", True):
+            return "selected"
+        return "muted"
+
+    def _apply_card_state(self, card, pkg):
+        card.setProperty("cardState", self._card_state(pkg))
+        card.style().unpolish(card)
+        card.style().polish(card)
+
     def _package_card(self, pkg):
-        card = ClickableFrame(objectName="card")
+        card = ClickableFrame()
+        card.setObjectName("card")
+        card.setProperty("cardState", self._card_state(pkg))
+
         layout = QHBoxLayout(card)
-        layout.setContentsMargins(12, 10, 12, 10)
-        layout.setSpacing(10)
+        layout.setContentsMargins(14, 12, 14, 12)
+        layout.setSpacing(12)
 
         checkbox = QCheckBox()
         checkbox.setChecked(pkg.get("_selected", True))
-        checkbox.stateChanged.connect(lambda state, p=pkg: self.on_pkg_checked(p, state))
-        layout.addWidget(checkbox, 0, Qt.AlignTop)
+        checkbox.stateChanged.connect(lambda state, p=pkg, c=card: self.on_pkg_checked(p, state, c))
+        layout.addWidget(checkbox, 0, Qt.AlignVCenter)
         card.clicked.connect(lambda p=pkg, cb=checkbox: self.toggle_pkg_from_row(p, cb))
 
-        main = QVBoxLayout()
-        main.setSpacing(3)
+        info = QVBoxLayout()
+        info.setSpacing(3)
         name = QLabel(pkg["Name"])
-        name.setStyleSheet("font-weight:600;color:#eee8d5;font-size:10pt;background:transparent;border:none;")
-        name.setAttribute(Qt.WA_StyledBackground, False)
+        name.setObjectName("pkgName")
         pkg_id = QLabel(pkg["Id"])
         pkg_id.setObjectName("pkgId")
-        pkg_id.setAttribute(Qt.WA_StyledBackground, False)
+        info.addWidget(name)
+        info.addWidget(pkg_id)
 
         meta_row = QHBoxLayout()
         meta_row.setSpacing(6)
         meta = QLabel(f"{pkg['Version']}  →  {pkg['Available']}   ·   {pkg.get('Source', '') or T('unknown_source')}")
         meta.setObjectName("pkgMeta")
-        meta.setAttribute(Qt.WA_StyledBackground, False)
         meta_row.addWidget(meta)
         if pkg.get("RequiresExplicitTarget"):
-            meta_row.addWidget(self.make_chip(T("chip_explicit")))
+            meta_row.addWidget(self.make_chip(T("chip_explicit"), "chipExplicit"))
         if (pkg.get("Version") or "").strip().lower() in ("unknown", "desconocida", ""):
-            meta_row.addWidget(self.make_chip(T("chip_unknown"), warn=True))
+            meta_row.addWidget(self.make_chip(T("chip_unknown"), "chipWarn"))
         meta_row.addStretch(1)
+        info.addLayout(meta_row)
 
-        main.addWidget(name)
-        main.addWidget(pkg_id)
-        main.addLayout(meta_row)
-        layout.addLayout(main, 1)
+        layout.addLayout(info, 1)
 
         actions = QHBoxLayout()
         actions.setSpacing(6)
         btn_mark = QPushButton(T("btn_mark"))
-        btn_mark.setMinimumWidth(72)
-        btn_mark.setFixedHeight(34)
+        btn_mark.setObjectName("chipButton")
         btn_unmark = QPushButton(T("btn_unmark"))
-        btn_unmark.setMinimumWidth(72)
-        btn_unmark.setFixedHeight(34)
+        btn_unmark.setObjectName("chipButton")
         btn_mark.clicked.connect(lambda: self.set_one_selected(pkg, True))
         btn_unmark.clicked.connect(lambda: self.set_one_selected(pkg, False))
         actions.addWidget(btn_mark)
         actions.addWidget(btn_unmark)
-        layout.addLayout(actions)
+        layout.addLayout(actions, 0)
+
         return card
 
-    def on_pkg_checked(self, pkg, state):
+    def on_pkg_checked(self, pkg, state, card=None):
         pkg["_selected"] = int(state) != 0
+        if card is not None:
+            self._apply_card_state(card, pkg)
         self.update_summary_ui()
 
     def toggle_pkg_from_row(self, pkg, checkbox):
-        checkbox.blockSignals(True)
         checkbox.setChecked(not checkbox.isChecked())
-        checkbox.blockSignals(False)
-        pkg["_selected"] = checkbox.isChecked()
-        self.update_summary_ui()
 
     def set_one_selected(self, pkg, value):
         pkg["_selected"] = value
@@ -917,36 +1062,23 @@ class MainWindow(QMainWindow):
         self.set_status(T("status_ready"))
         self.append_log(T("log_list_updated") if self.pkgs else T("status_ready"))
 
-    def ask_close_retry(self, name, procs_txt):
-        return QMessageBox.question(
-            self,
-            T("retry_close_title"),
-            T("retry_close_prompt", name=name, processes=procs_txt),
-        ) == QMessageBox.Yes
-
     def show_result_dialog(self, title, body, warning=False):
         dlg = QDialog(self)
         dlg.setWindowTitle(title)
         dlg.setModal(True)
         dlg.setMinimumWidth(520)
-        dlg.setMaximumWidth(620)
-        dlg.setStyleSheet(
-            "QDialog { background-color:#073642; color:#eee8d5; }"
-            "QLabel { color:#eee8d5; background:transparent; }"
-            "QPushButton { background:#0a3a46; color:#eee8d5; border:1px solid #4f676e; border-radius:8px; padding:7px 12px; min-width:90px; }"
-            "QPushButton:hover { background:#104553; border-color:#657b83; }"
-        )
+        dlg.setMaximumWidth(640)
 
         layout = QVBoxLayout(dlg)
-        layout.setContentsMargins(18, 18, 18, 16)
+        layout.setContentsMargins(20, 18, 20, 16)
         layout.setSpacing(14)
 
         top = QHBoxLayout()
         top.setSpacing(14)
 
         icon_label = QLabel("⚠" if warning else "ℹ")
-        icon_label.setStyleSheet("font-size: 28pt; color: #b58900; background: transparent;")
-        icon_label.setAlignment(Qt.AlignTop)
+        icon_label.setObjectName("dialogIconWarn" if warning else "dialogIconInfo")
+        icon_label.setAlignment(Qt.AlignTop | Qt.AlignHCenter)
         top.addWidget(icon_label, 0, Qt.AlignTop)
 
         text_label = QLabel(body)
@@ -960,6 +1092,8 @@ class MainWindow(QMainWindow):
         buttons = QHBoxLayout()
         buttons.addStretch(1)
         ok_btn = QPushButton("OK")
+        ok_btn.setMinimumWidth(90)
+        ok_btn.setDefault(True)
         ok_btn.clicked.connect(dlg.accept)
         buttons.addWidget(ok_btn)
         layout.addLayout(buttons)
@@ -977,12 +1111,24 @@ class MainWindow(QMainWindow):
         self.progress.setMaximum(len(selected))
         self.progress.setValue(0)
         self.set_status(T("status_updating_count", count=len(selected)))
-        self.update_thread = UpdateThread(selected, self.ask_close_retry, self)
-        self.update_thread.log.connect(self.append_log)
+
+        self.update_thread = UpdateThread(selected, self)
+        self.update_thread.log_line.connect(self.append_log)
+        self.update_thread.log_progress.connect(self.replace_progress)
         self.update_thread.status.connect(self.set_status)
         self.update_thread.package_done.connect(lambda _r: self.progress.setValue(self.progress.value() + 1))
         self.update_thread.finished_summary.connect(self.on_update_finished)
+        self.update_thread.close_retry_requested.connect(self._on_close_retry_requested)
         self.update_thread.start()
+
+    def _on_close_retry_requested(self, name, procs_txt):
+        ans = QMessageBox.question(
+            self,
+            T("retry_close_title"),
+            T("retry_close_prompt", name=name, processes=procs_txt),
+        ) == QMessageBox.Yes
+        if self.update_thread is not None:
+            self.update_thread.provide_close_retry_answer(ans)
 
     def cancel_update(self):
         if self.update_thread:

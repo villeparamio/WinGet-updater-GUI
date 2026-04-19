@@ -393,31 +393,8 @@ def precheck_upgrade(pkg):
     return True, "upgradable", out
 
 
-def perform_upgrade_attempt(pkg, text_widget, cancel_flag, set_current_process, use_exact=True):
-    def ui_print(msg):
-        text_widget.after(0, lambda: (
-            text_widget.insert("end", msg if msg.endswith("\n") else msg + "\n"),
-            text_widget.see("end"),
-        ))
-
-    def ui_replace_last_line(msg):
-        def _do():
-            try:
-                line_count = int(float(text_widget.index("end-1c").split(".")[0]))
-                if line_count < 2:
-                    text_widget.insert("end", msg if msg.endswith("\n") else msg + "\n")
-                else:
-                    start = text_widget.index("end-2l linestart")
-                    end = text_widget.index("end-1c")
-                    text_widget.delete(start, end)
-                    text_widget.insert(start, msg if msg.endswith("\n") else msg + "\n")
-                text_widget.see("end")
-            except Exception:
-                text_widget.insert("end", msg if msg.endswith("\n") else msg + "\n")
-                text_widget.see("end")
-        text_widget.after(0, _do)
-
-    def is_boring_status_line(line: str) -> bool:
+def perform_upgrade_attempt(pkg, on_line, on_progress, is_cancelled, set_current_process, use_exact=True):
+    def is_boring_status_line(line):
         boring_patterns = [
             r"No se ha encontrado ninguna actualización disponible",
             r"No hay versiones más recientes del paquete disponibles",
@@ -448,11 +425,10 @@ def perform_upgrade_attempt(pkg, text_widget, cancel_flag, set_current_process, 
 
     log_path = None
     output_lines = []
-    printed_progress = False
     cancelled = False
 
     for raw in proc.stdout:
-        if cancel_flag.get():
+        if is_cancelled():
             try:
                 proc.terminate()
             except Exception:
@@ -462,16 +438,10 @@ def perform_upgrade_attempt(pkg, text_widget, cancel_flag, set_current_process, 
 
         output_lines.append(raw)
         line = raw.rstrip("\r\n")
-        if not line:
-            continue
-        if RE_SPINNER.match(line):
+        if not line.strip() or RE_SPINNER.match(line):
             continue
         if RE_PROGRESS_SIZE.search(line) or RE_PROGRESS_BAR.match(line):
-            if not printed_progress:
-                ui_print(line)
-                printed_progress = True
-            else:
-                ui_replace_last_line(line)
+            on_progress(line)
             continue
 
         mlog = RE_LOG_PATH.search(line)
@@ -482,9 +452,13 @@ def perform_upgrade_attempt(pkg, text_widget, cancel_flag, set_current_process, 
             continue
         if is_boring_status_line(line):
             continue
-        ui_print(line)
+        on_line(line)
 
     if cancelled:
+        try:
+            proc.wait(timeout=2)
+        except Exception:
+            pass
         return {
             "status": "cancelled",
             "pkg": pkg,

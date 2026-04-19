@@ -17,3 +17,7 @@ venv/
 # Windows
 Thumbs.db
 Desktop.ini
+
+# Claude
+CLAUDE.md
+.claude/

@@ -124,6 +124,17 @@ Además:
 
 ## 📜 Changelog
 
+### v1.3
+- Se rediseña la interfaz con paleta **Solarized Dark** oficial y mejor contraste en texto secundario.
+- El **log de ejecución** pasa a estar siempre visible en un panel inferior con tipografía monoespaciada.
+- Cada paquete se muestra como una tarjeta con barra lateral de color según su estado (seleccionado, deseleccionado, destino explícito).
+- Se corrige un **crash al cerrar procesos y reintentar**: el diálogo de confirmación se abría desde el hilo trabajador de Qt. Ahora se usa un puente signal + event para mostrarlo desde el hilo principal.
+- Se limpia la lógica de ejecución:
+  - `perform_upgrade_attempt` recibe callbacks simples en vez de un pseudo widget de Tkinter.
+  - Se filtran las líneas de solo espacios que `winget` escribe al limpiar la barra de progreso.
+  - Tras cancelar, se espera al proceso de `winget` unos segundos para no dejarlo colgado.
+- Se amplía `process_hints.py` con más de 160 paquetes comunes: navegadores, IDEs, IDEs de JetBrains, terminales, clientes de chat, launchers de juegos, software RGB, editores multimedia, notas, gestores de contraseñas, torrents y utilidades de sistema.
+
 ### v1.2
 - La interfaz gráfica se migra a **PySide6**.
 - Se renueva la GUI con un diseño más moderno.
