@@ -402,6 +402,10 @@ def perform_upgrade_attempt(pkg, on_line, on_progress, is_cancelled, set_current
             r"No package found matching input criteria",
             r"No installed package found matching input criteria",
             r"No se encontró ningún paquete que coincida con los criterios de entrada",
+            r"different install technology",
+            r"tecnolog[ií]a de instalaci[oó]n.*diferente",
+            r"Desinstale el paquete e instale",
+            r"Uninstall the package and install",
         ]
         return matches_any(line, boring_patterns)
 

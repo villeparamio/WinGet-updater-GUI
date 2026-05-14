@@ -40,9 +40,10 @@ from winget_core import (
     get_running_process_hints,
     should_offer_close_retry,
     kill_processes,
+    run_hidden,
 )
 
-APP_VERSION = "v1.3"
+APP_VERSION = "v1.4"
 I18N_OBJ = I18N(Path(__file__).resolve().parent)
 T = I18N_OBJ.t
 
@@ -415,12 +416,155 @@ def ensure_admin():
     sys.exit(0)
 
 
-def has_winget():
+def _resolve_winget_path():
+    local = os.environ.get("LOCALAPPDATA", "")
+    if local:
+        candidate = os.path.join(local, "Microsoft", "WindowsApps", "winget.exe")
+        if os.path.exists(candidate):
+            return candidate
+    return "winget"
+
+
+def _appx_arch():
+    arch = (
+        os.environ.get("PROCESSOR_ARCHITEW6432")
+        or os.environ.get("PROCESSOR_ARCHITECTURE", "")
+        or ""
+    ).lower()
+    if "arm64" in arch:
+        return "arm64"
+    if "amd64" in arch or "x64" in arch:
+        return "x64"
+    return "x64"
+
+
+def _open_store_fallback(log_fn=None):
+    def log(msg):
+        if log_fn:
+            log_fn(msg)
     try:
-        r = subprocess.run(["winget", "-v"], capture_output=True, text=True)
-        return r.returncode == 0 and bool((r.stdout or "").strip())
+        webbrowser.open("ms-windows-store://pdp/?ProductId=9NBLGGH4NNS1")
+        return
+    except Exception as e:
+        log(f"[diag] no se pudo abrir la Microsoft Store: {type(e).__name__}: {e}")
+    try:
+        webbrowser.open("https://apps.microsoft.com/detail/9NBLGGH4NNS1")
+    except Exception as e:
+        log(f"[diag] tampoco se pudo abrir la URL HTTPS de la Store: {type(e).__name__}: {e}")
+
+
+def has_winget(log_fn=None):
+    exe = _resolve_winget_path()
+    try:
+        r = run_hidden(
+            [exe, "-v"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=15,
+        )
     except FileNotFoundError:
+        if log_fn:
+            log_fn(f"[diag] winget no encontrado (FileNotFoundError) [exe={exe}]")
         return False
+    except subprocess.TimeoutExpired:
+        if log_fn:
+            log_fn(f"[diag] winget -v: timeout tras 15s [exe={exe}]")
+        return False
+    except Exception as e:
+        if log_fn:
+            log_fn(f"[diag] error comprobando winget: {type(e).__name__}: {e}")
+        return False
+    if log_fn:
+        log_fn(
+            f"[diag] winget -v exit={r.returncode} "
+            f"stdout={(r.stdout or '').strip()!r} "
+            f"stderr={(r.stderr or '').strip()!r} "
+            f"[exe={exe}]"
+        )
+    return r.returncode == 0 and bool((r.stdout or "").strip())
+
+
+def _run_powershell(label, script, log, dump, timeout):
+    preamble = (
+        "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; "
+        "$OutputEncoding = [System.Text.Encoding]::UTF8; "
+    )
+    cmd = [
+        "powershell", "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass",
+        "-Command", preamble + script,
+    ]
+    try:
+        r = run_hidden(
+            cmd,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired as te:
+        log(f"[diag] {label}: timeout tras {timeout}s")
+        partial_out = te.stdout if isinstance(te.stdout, str) else ""
+        partial_err = te.stderr if isinstance(te.stderr, str) else ""
+        if partial_out and partial_out.strip():
+            log(f"[diag] {label} stdout parcial:\n{partial_out.strip()}")
+        if partial_err and partial_err.strip():
+            log(f"[diag] {label} stderr parcial:\n{partial_err.strip()}")
+        return None
+    except Exception as e:
+        log(f"[diag] {label}: excepción {type(e).__name__}: {e}")
+        return None
+    dump(label, r)
+    return r
+
+
+def _install_dependency(label, url, filename, log, dump):
+    path = os.path.join(tempfile.gettempdir(), filename)
+    log(f"[diag] dependencia {label}: descargando {url}")
+    dl = _run_powershell(
+        f"{label} descarga",
+        (
+            "$ProgressPreference = 'SilentlyContinue'; "
+            f"Invoke-WebRequest -Uri '{url}' "
+            f"-OutFile '{path}' -UseBasicParsing"
+        ),
+        log, dump, timeout=120,
+    )
+    if dl is None or dl.returncode != 0:
+        return False
+    try:
+        size = os.path.getsize(path)
+    except OSError as e:
+        log(f"[diag] {label}: bundle inaccesible: {e}")
+        return False
+    log(f"[diag] {label} descargado: {size} bytes")
+    if size < 100_000:
+        log(f"[diag] {label} tamaño sospechoso, posible descarga truncada")
+        return False
+    inst = _run_powershell(
+        f"{label} install",
+        (
+            "Try { "
+            f"Add-AppxPackage -Path '{path}' -ForceApplicationShutdown "
+            "-ForceUpdateFromAnyVersion -ErrorAction Stop; exit 0 "
+            "} Catch { "
+            "$msg = $_ | Out-String; Write-Output $msg; "
+            "if ($msg -match '0x80073D06') { exit 2 } else { exit 1 } "
+            "}"
+        ),
+        log, dump, timeout=180,
+    )
+    if inst is None:
+        return False
+    if inst.returncode == 2:
+        log(
+            f"[diag] {label}: ya hay una versión igual o más reciente instalada "
+            "(0x80073D06), continuando"
+        )
+        return True
+    return inst.returncode == 0
 
 
 def try_install_winget(log_fn=None):
@@ -430,29 +574,86 @@ def try_install_winget(log_fn=None):
         else:
             print(msg)
 
+    def dump(label, r):
+        log(f"[diag] {label}: exit={r.returncode}")
+        stdout = (r.stdout or "").strip()
+        stderr = (r.stderr or "").strip()
+        if stdout:
+            log(f"[diag] {label} stdout:\n{stdout}")
+        if stderr:
+            log(f"[diag] {label} stderr:\n{stderr}")
+
     log(T("winget_install_start"))
+    arch = _appx_arch()
+    log(f"[diag] arquitectura detectada: {arch}")
+
+    deps = [
+        (
+            "VCLibs",
+            f"https://aka.ms/Microsoft.VCLibs.{arch}.14.00.Desktop.appx",
+            f"Microsoft.VCLibs.{arch}.14.00.Desktop.appx",
+        ),
+        (
+            "UI.Xaml",
+            (
+                "https://github.com/microsoft/microsoft-ui-xaml/releases/download/"
+                f"v2.8.6/Microsoft.UI.Xaml.2.8.{arch}.appx"
+            ),
+            f"Microsoft.UI.Xaml.2.8.{arch}.appx",
+        ),
+    ]
+    for label, url, fname in deps:
+        ok_dep = _install_dependency(label, url, fname, log, dump)
+        if not ok_dep:
+            log(
+                f"[diag] dependencia {label} no se instaló; "
+                "es inocuo si ya estaba presente, se sabrá al instalar el bundle"
+            )
+
     bundle_path = os.path.join(tempfile.gettempdir(), "AppInstaller.msixbundle")
-    ps = [
-        "powershell", "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass",
-        f"Invoke-WebRequest -Uri https://aka.ms/getwinget -OutFile '{bundle_path}' -UseBasicParsing"
-    ]
-    r = subprocess.run(ps, capture_output=True, text=True)
-    if r.returncode != 0:
+    log(f"[diag] destino del bundle: {bundle_path}")
+
+    dl = _run_powershell(
+        "descarga",
+        (
+            "$ProgressPreference = 'SilentlyContinue'; "
+            f"Invoke-WebRequest -Uri https://aka.ms/getwinget "
+            f"-OutFile '{bundle_path}' -UseBasicParsing"
+        ),
+        log, dump, timeout=180,
+    )
+    if dl is None or dl.returncode != 0:
         log(T("winget_install_download_failed"))
-        webbrowser.open("ms-windows-store://pdp/?ProductId=9NBLGGH4NNS1")
+        _open_store_fallback(log)
         return False
 
-    ps_install = [
-        "powershell", "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass",
-        f"Try {{ Add-AppxPackage -Path '{bundle_path}' -ForceApplicationShutdown -ForceUpdateFromAnyVersion -Verbose; exit 0 }} Catch {{ $_ | Out-String; exit 1 }}"
-    ]
-    r2 = subprocess.run(ps_install, capture_output=True, text=True)
-    if r2.returncode != 0:
+    try:
+        size = os.path.getsize(bundle_path)
+    except OSError as e:
+        log(f"[diag] no se puede leer el bundle descargado: {e}")
+        log(T("winget_install_download_failed"))
+        _open_store_fallback(log)
+        return False
+    log(f"[diag] bundle descargado: {size} bytes")
+    if size < 1_000_000:
+        log("[diag] tamaño sospechosamente pequeño, posible descarga truncada")
+
+    inst = _run_powershell(
+        "Add-AppxPackage",
+        (
+            "Try { "
+            f"Add-AppxPackage -Path '{bundle_path}' -ForceApplicationShutdown "
+            "-ForceUpdateFromAnyVersion -Verbose -ErrorAction Stop; exit 0 "
+            "} Catch { $_ | Out-String; exit 1 }"
+        ),
+        log, dump, timeout=300,
+    )
+    if inst is None or inst.returncode != 0:
         log(T("winget_install_failed"))
-        webbrowser.open("ms-windows-store://pdp/?ProductId=9NBLGGH4NNS1")
+        _open_store_fallback(log)
         return False
 
-    ok = has_winget()
+    ok = has_winget(log)
     log(T("winget_install_ok") if ok else T("winget_still_missing"))
     return ok
 
@@ -481,6 +682,21 @@ class LoaderThread(QThread):
             self.loaded.emit(parse_winget_output() or [])
         except Exception as e:
             self.failed.emit(str(e))
+
+
+class InstallerThread(QThread):
+    log_line = Signal(str)
+    finished_install = Signal(bool)
+
+    def run(self):
+        try:
+            ok = try_install_winget(self.log_line.emit)
+        except Exception as e:
+            self.log_line.emit(
+                f"[diag] excepción inesperada en instalador: {type(e).__name__}: {e}"
+            )
+            ok = False
+        self.finished_install.emit(bool(ok))
 
 
 class UpdateThread(QThread):
@@ -537,6 +753,17 @@ class UpdateThread(QThread):
     def run(self):
         results = []
         total = len(self.selected)
+        status_msgs = {
+            "updated": T("log_updated"),
+            "updated_restart_required": T("log_updated_restart_required"),
+            "no_longer_pending": T("log_resolved_no_longer_pending"),
+            "already_installed": T("log_resolved_already_installed"),
+            "different_install_technology": T("log_resolved_different_tech"),
+        }
+
+        def emit_status_msg(status):
+            if status in status_msgs:
+                self.log_line.emit(status_msgs[status])
 
         for idx, pkg in enumerate(self.selected, start=1):
             if self.cancelled:
@@ -570,16 +797,7 @@ class UpdateThread(QThread):
                 continue
 
             result = self._run_upgrade(pkg, use_exact=True)
-
-            status_msgs = {
-                "updated": T("log_updated"),
-                "updated_restart_required": T("log_updated_restart_required"),
-                "no_longer_pending": T("log_resolved_no_longer_pending"),
-                "already_installed": T("log_resolved_already_installed"),
-                "different_install_technology": T("log_resolved_different_tech"),
-            }
-            if result["status"] in status_msgs:
-                self.log_line.emit(status_msgs[result["status"]])
+            emit_status_msg(result["status"])
 
             if (not pkg.get("RequiresExplicitTarget")
                     and result["status"] in ("not_applicable", "not_found", "no_longer_pending")
@@ -594,6 +812,7 @@ class UpdateThread(QThread):
                         + (retry_no_exact.get("raw_output") or "")
                     )
                     result = retry_no_exact
+                    emit_status_msg(result["status"])
 
             if result["status"] == "cancelled":
                 self.log_line.emit(T("log_cancelled"))
@@ -623,6 +842,7 @@ class UpdateThread(QThread):
                             + (retry_result.get("raw_output") or "")
                         )
                         result = retry_result
+                        emit_status_msg(result["status"])
 
             results.append(result)
             self.package_done.emit(result)
@@ -1040,14 +1260,30 @@ class MainWindow(QMainWindow):
         self.set_status(T("status_fetching_list") if initial else T("status_refreshing_list"))
         self.append_log(T("log_fetching_list") if initial else T("log_refreshing_list"))
 
-        if not has_winget():
-            if QMessageBox.question(self, T("install_winget_title"), T("install_winget_prompt")) != QMessageBox.Yes:
-                QMessageBox.critical(self, T("winget_missing_title"), T("winget_missing_body"))
-                return
-            if not try_install_winget(self.append_log):
-                QMessageBox.critical(self, T("winget_missing_title"), T("winget_missing_body"))
-                return
+        if has_winget(self.append_log):
+            self._start_loader()
+            return
 
+        if QMessageBox.question(self, T("install_winget_title"), T("install_winget_prompt")) != QMessageBox.Yes:
+            QMessageBox.critical(self, T("winget_missing_title"), T("winget_missing_body"))
+            self._set_enabled(True)
+            self.set_status(T("status_ready"))
+            return
+
+        self.installer_thread = InstallerThread(self)
+        self.installer_thread.log_line.connect(self.append_log)
+        self.installer_thread.finished_install.connect(self._on_install_finished)
+        self.installer_thread.start()
+
+    def _on_install_finished(self, ok):
+        if not ok:
+            QMessageBox.critical(self, T("winget_missing_title"), T("winget_missing_body"))
+            self._set_enabled(True)
+            self.set_status(T("status_ready"))
+            return
+        self._start_loader()
+
+    def _start_loader(self):
         self.loader_thread = LoaderThread(self)
         self.loader_thread.loaded.connect(self.on_loaded)
         self.loader_thread.failed.connect(lambda msg: QMessageBox.critical(self, T("error_title"), msg))

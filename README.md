@@ -124,6 +124,21 @@ Además:
 
 ## 📜 Changelog
 
+### v1.4
+- Se **arregla la instalación de Microsoft App Installer (winget) en equipos que no lo tienen**:
+  - Se desactiva la barra de progreso de `Invoke-WebRequest` (`$ProgressPreference = 'SilentlyContinue'`), que por un bug conocido de PowerShell 5.1 ralentizaba descargas grandes hasta varios órdenes de magnitud y provocaba que la descarga del bundle se quedase colgada.
+  - Se pre-instalan las dependencias `Microsoft.VCLibs` y `Microsoft.UI.Xaml` antes del bundle de App Installer, detectando automáticamente la arquitectura (`x64`/`arm64`).
+  - El error `0x80073D06` ("ya hay una versión superior instalada") se trata correctamente como caso benigno y no como fallo.
+  - La detección de winget hace fallback a la ruta absoluta `%LOCALAPPDATA%\Microsoft\WindowsApps\winget.exe` cuando el `PATH` del proceso actual está cacheado.
+- La instalación de winget se ejecuta en un **hilo dedicado** (`InstallerThread`), evitando que la ventana se congele durante la descarga; el log fluye en tiempo real.
+- Se añade **logueo de diagnóstico exhaustivo** con prefijo `[diag]`: stdout, stderr, exit code y salida parcial en caso de timeout para cada llamada PowerShell.
+- Se añaden **timeouts** a todas las llamadas a subprocess y captura amplia de excepciones.
+- Se fuerza codificación **UTF-8** en la salida de PowerShell para que los acentos se muestren correctamente en el log.
+- Las llamadas a subprocess de la GUI se hacen ya sin abrir ventanas de consola en el `.exe`.
+- Cuando falla abrir la Microsoft Store por `ms-windows-store://`, se prueba con la URL HTTPS `apps.microsoft.com` como fallback.
+- Se completa el log al finalizar el **reintento sin `--exact`** y el **reintento tras matar procesos**: antes el reintento quedaba en silencio y el usuario no veía cómo había resuelto.
+- Se elimina la línea cruda duplicada de winget cuando el resultado es "tecnología de instalación distinta".
+
 ### v1.3
 - Se rediseña la interfaz con paleta **Solarized Dark** oficial y mejor contraste en texto secundario.
 - El **log de ejecución** pasa a estar siempre visible en un panel inferior con tipografía monoespaciada.
